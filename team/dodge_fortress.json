@@ -1,0 +1,79 @@
+{
+  "id": "dodge_fortress",
+  "name": "铁壁兽化队 AI",
+  "name_en": "Iron Wall & Abomination",
+  "name_zh": "铁壁兽化持久队",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_wall",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Iron Fortress",
+    "heroes": [
+      {
+        "hero_id": "leper",
+        "skills": [
+          "chop",
+          "solemnity",
+          "withstand",
+          "intimidate"
+        ],
+        "trinkets": [
+          "gladiator_mask",
+          "gladiator_helmet"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "abomination",
+        "skills": [
+          "transform",
+          "manacles",
+          "vomit",
+          "absolution",
+          "rake",
+          "rage",
+          "slam"
+        ],
+        "trinkets": [
+          "clasp_of_the_beast",
+          "shattered_padlock"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "invigorating_vapours",
+          "protect_me",
+          "flashpowder",
+          "festering_vapours"
+        ],
+        "trinkets": [
+          "numbing_incense",
+          "black_diamond_mirror"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "divine_grace",
+          "gods_comfort",
+          "dazzling_light",
+          "judgement"
+        ],
+        "trinkets": [
+          "idol_of_purity",
+          "ankh_of_life"
+        ],
+        "variant": "A",
+        "name": ""
+      }
+    ]
+  }
+}

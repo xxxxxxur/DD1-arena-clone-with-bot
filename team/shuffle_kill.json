@@ -1,0 +1,76 @@
+{
+  "id": "shuffle_kill",
+  "name": "乱位斩杀 AI",
+  "name_en": "Shuffle Execute (Cru/SB/HWM/Ves)",
+  "name_zh": "乱位斩杀（十字军/破盾/强盗/修女）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "shuffle_kill",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Shuffle Execute",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "pierce",
+          "break_guard",
+          "expose",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "retarius_net",
+          "eerie_eye"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "wicked_slice",
+          "point_blank_shot",
+          "take_aim",
+          "duelist_advance"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "parrying_dagger"
+        ],
+        "variant": "D",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "tome_of_fury",
+          "brass_knuckles"
+        ],
+        "variant": "B",
+        "name": ""
+      }
+    ]
+  }
+}

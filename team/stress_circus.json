@@ -1,0 +1,76 @@
+{
+  "id": "stress_circus",
+  "name": "压力折磨队 AI",
+  "name_en": "Ringmaster's Nightmare (Stress)",
+  "name_zh": "压力折磨队（马戏团噩梦）",
+  "bot_class": "com.circus.bot.StressSpecialistBot",
+  "bot_options": {
+    "profile": "stress",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Stress Circus",
+    "heroes": [
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "rampart",
+          "defender",
+          "bolster"
+        ],
+        "trinkets": [
+          "protector_kite",
+          "carnival_masque"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "inspiring_cry",
+          "smite"
+        ],
+        "trinkets": [
+          "glorious_standard",
+          "eerie_eye"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "solo",
+          "harvest",
+          "inspiring_tune",
+          "heroic_end"
+        ],
+        "trinkets": [
+          "harlequin_masque",
+          "sanity_bane"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "occultist",
+        "skills": [
+          "abyssal_artillery",
+          "weakening_curse",
+          "wyrd_reconstruction",
+          "daemons_pull"
+        ],
+        "trinkets": [
+          "calling_saltes",
+          "hand_of_glory"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

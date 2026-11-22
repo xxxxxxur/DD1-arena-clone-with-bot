@@ -1,0 +1,25 @@
+=== Darkest Dungeon: The Butcher's Circus Java 26 Verification Suite ===
+  [PASS] test_18_heroes_126_skills_103_trinkets                 (32.5 ms)
+  [PASS] test_alternating_turns_and_round_initiative            (13.9 ms)
+  [PASS] test_arena_exclusives_and_conditional_trinket_damage   (4.1 ms)
+  [PASS] test_stygian_embrace_from_legacy_loadout               (3.5 ms)
+  [PASS] test_daze_forces_act_last                              (0.7 ms)
+  [PASS] test_stun_forces_pass_and_grants_stun_resist           (4.9 ms)
+  [PASS] test_riposte_rules_debuffs_and_buff_serialization      (2.9 ms)
+  [PASS] test_dot_cannot_trigger_deathblow                      (1.5 ms)
+  [PASS] test_heart_attack_rules                                (1.7 ms)
+  [PASS] test_flagellant_rapturous_and_abom_transform           (0.2 ms)
+  [PASS] test_clone_determinism_and_search_bot_kill_priority    (571.7 ms)
+  [PASS] test_five_meta_teams_and_no_duplicate_classes          (2.7 ms)
+         FMOD cold bank+sample0: 243.1 ms | next 5 samples (LRU bank pool): 68.6 ms (13.73 ms/sample)
+  [FAIL] test_assets_spine_fmod_openmemory_localization         -> java.lang.AssertionError: Assertion failed: FMOD WAVWRITER_NRT mixed music WAV
+java.lang.AssertionError: Assertion failed: FMOD WAVWRITER_NRT mixed music WAV
+	at com.circus.CircusTestSuite.check(CircusTestSuite.java:39)
+	at com.circus.CircusTestSuite.testAssetsSpineFmodLoc(CircusTestSuite.java:438)
+	at com.circus.CircusTestSuite.runTest(CircusTestSuite.java:57)
+	at com.circus.CircusTestSuite.main(CircusTestSuite.java:86)
+  [PASS] test_team_json_decoupled_bot_class_loading             (14.2 ms)
+  [PASS] test_tournament_complete_report_json_and_http_endpoints (1987.6 ms)
+  [PASS] test_http_range_and_local_2p_websocket_match           (386.4 ms)
+
+Summary: 15 passed, 1 failed.

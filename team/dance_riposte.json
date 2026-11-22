@@ -1,0 +1,76 @@
+{
+  "id": "dance_riposte",
+  "name": "剑舞反击队 AI",
+  "name_en": "Blade Dance & Riposte",
+  "name_zh": "剑舞反击突进队",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Blade Dance",
+    "heroes": [
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "pierce",
+          "break_guard",
+          "adders_kiss",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "scaled_shoulder",
+          "viper_spear_tip"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "duelist_advance",
+          "point_blank_shot",
+          "wicked_slice",
+          "pistol_shot"
+        ],
+        "trinkets": [
+          "parrying_dagger",
+          "monkey_paw"
+        ],
+        "variant": "D",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "holy_lance",
+          "smite",
+          "inspiring_cry",
+          "battle_heal"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "pitfighter_helm"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "grave_robber",
+        "skills": [
+          "lunge",
+          "shadow_fade",
+          "thrown_dagger",
+          "pick"
+        ],
+        "trinkets": [
+          "well_balanced_stiletto",
+          "cloak_and_dagger"
+        ],
+        "variant": "B",
+        "name": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+clone+step: 1875554.7 ops/s; 4896 bytes/op
+search-depth-2: 4138.6 ops/s; 426352 bytes/op
+search: depth=2 nodes=93 ttHits=3
+random-match: 4884.9 ops/s; 376649 bytes/op
+tournament-workers-1: 3476.4 matches/s; 2000 matches; avgRounds=16.06
+tournament-workers-4: 11277.2 matches/s; 2000 matches; avgRounds=16.06
+checksum=1101166985460

@@ -1,0 +1,2 @@
+PASS: 5624 turns across 60 matches; legal actions, hash/RNG, clones, custom bots and replay analytics
+PASS: Top-K/search choices; 80 serial/parallel matches with identical standings and analytics

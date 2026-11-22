@@ -1,0 +1,76 @@
+{
+  "id": "iron_wall",
+  "name": "铁桶 AI",
+  "name_en": "Iron Wall Fortress (Fla/Cru/MAA/GR)",
+  "name_zh": "铁桶（苦修/十字军/老兵/盗墓）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_wall",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Iron Wall Fortress",
+    "heroes": [
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "rain_of_sorrows",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "gauntlet_of_absolution",
+          "crimson_hook"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "bulwark_of_faith",
+          "battle_heal",
+          "inspiring_cry"
+        ],
+        "trinkets": [
+          "glorious_standard",
+          "numbing_incense"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "numbing_incense"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "grave_robber",
+        "skills": [
+          "lunge",
+          "shadow_fade",
+          "poison_dart",
+          "toxin_trickery"
+        ],
+        "trinkets": [
+          "satchel_of_dirty_tricks",
+          "monkey_paw"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

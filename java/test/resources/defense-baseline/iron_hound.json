@@ -1,0 +1,76 @@
+{
+  "id": "iron_hound",
+  "name": "铁血猎犬 AI",
+  "name_en": "Iron Blood Hound (Fla/Cru/MAA/HM)",
+  "name_zh": "铁血猎犬（苦修/十字军/老兵/训犬）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_hound",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Iron Blood Hound",
+    "heroes": [
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "rain_of_sorrows",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "gauntlet_of_absolution",
+          "crimson_hook"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "bulwark_of_faith",
+          "battle_heal",
+          "inspiring_cry"
+        ],
+        "trinkets": [
+          "glorious_standard",
+          "numbing_incense"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "numbing_incense"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_harry",
+          "howl",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "attack_whistle",
+          "monkey_paw"
+        ],
+        "variant": "B",
+        "name": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "id": "direct_kill",
+  "name": "直伤斩杀 AI",
+  "name_en": "Direct Damage Execute (SB/HWM/Jes/Ves)",
+  "name_zh": "直伤斩杀（破盾/强盗/小丑/修女）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "direct_kill",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Direct Damage Execute",
+    "heroes": [
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "pierce",
+          "break_guard",
+          "spearing",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "graceful_anklet",
+          "monkey_paw"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "point_blank_shot",
+          "grape_shot_blast",
+          "take_aim",
+          "duelist_advance"
+        ],
+        "trinkets": [
+          "eagle_eye_talisman",
+          "parrying_dagger"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "heroic_end",
+          "battle_ballad",
+          "inspiring_tune"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "monkey_paw"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort",
+          "gods_hand"
+        ],
+        "trinkets": [
+          "gleaming_breastplate",
+          "idol_of_purity"
+        ],
+        "variant": "A",
+        "name": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "id": "stun_kill",
+  "name": "强晕斩杀 AI",
+  "name_en": "Heavy Stun Execute (Abo/Cru/BH/Arb)",
+  "name_zh": "强晕斩杀（咒缚/十字军/赏金/弩手）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "stun_kill",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Heavy Stun Execute",
+    "heroes": [
+      {
+        "hero_id": "abomination",
+        "skills": [
+          "transform",
+          "manacles",
+          "vomit",
+          "absolution",
+          "rake",
+          "rage",
+          "slam"
+        ],
+        "trinkets": [
+          "spiked_chain",
+          "brass_knuckles"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "brass_knuckles"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "bounty_hunter",
+        "skills": [
+          "target_tag",
+          "come_hither",
+          "finish_him",
+          "hook_and_slice"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "grappling_mits"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "arbalest",
+        "skills": [
+          "sniper_shot",
+          "bola",
+          "battlefield_bandage",
+          "flare"
+        ],
+        "trinkets": [
+          "piercing_quarrel",
+          "stabilizing_tiller"
+        ],
+        "variant": "A",
+        "name": ""
+      }
+    ]
+  }
+}

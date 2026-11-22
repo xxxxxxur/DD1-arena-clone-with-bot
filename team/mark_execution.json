@@ -1,0 +1,76 @@
+{
+  "id": "mark_execution",
+  "name": "标记斩杀队 AI",
+  "name_en": "Mark & Execution",
+  "name_zh": "标记斩杀队",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "direct_kill",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Mark & Execution",
+    "heroes": [
+      {
+        "hero_id": "bounty_hunter",
+        "skills": [
+          "collect_bounty",
+          "target_tag",
+          "come_hither",
+          "finish_him"
+        ],
+        "trinkets": [
+          "bounty_notice",
+          "heartseeker"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "duelist_advance",
+          "wicked_slice",
+          "pistol_shot",
+          "point_blank_shot"
+        ],
+        "trinkets": [
+          "duelist_pistol",
+          "parrying_dagger"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_rush",
+          "hounds_harry",
+          "whistle",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "attack_whistle",
+          "the_finisher"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "arbalest",
+        "skills": [
+          "sniper_shot",
+          "sniper_mark",
+          "suppressing_fire",
+          "battlefield_bandage"
+        ],
+        "trinkets": [
+          "piercing_quarrel",
+          "eagle_eye_talisman"
+        ],
+        "variant": "A",
+        "name": ""
+      }
+    ]
+  }
+}

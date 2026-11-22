@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Darkest Dungeon: The Butcher's Circus — 屠夫马戏团</title>
+  <link rel="stylesheet" href="/static/css/circus.css?v=5" />
+</head>
+<body>
+  <div id="app">
+    <!-- Compact Gothic Top Control Strip -->
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-emblem">⚔</span>
+        <span id="brand-title">THE BUTCHER'S CIRCUS</span>
+        <span id="room-badge" class="room-badge hidden"></span>
+      </div>
+      <div class="top-controls">
+        <button id="btn-closeup" class="btn-iron active" title="Toggle Combat Close-Up Spotlight Camera">🎬 特写镜头: 开</button>
+        <select id="arena-tier-select" title="Arena Tier">
+          <option value="darkest">Darkest / 极暗角斗场</option>
+          <option value="champion">Champion / 冠军角斗场</option>
+          <option value="veteran">Veteran / 老兵角斗场</option>
+          <option value="apprentice">Apprentice / 学徒角斗场</option>
+          <option value="novice">Novice / 新手角斗场</option>
+        </select>
+        <button id="btn-lang" class="btn-iron">中文 / EN</button>
+        <button id="btn-mute" class="btn-iron">🔊 Audio</button>
+        <button id="btn-lobby" class="btn-iron hidden">🎪 返回马戏团</button>
+      </div>
+    </header>
+
+    <!-- ==================== VIEW 1: AUTHENTIC CIRCUS TOWN HUB (主界面) ==================== -->
+    <main id="view-town" class="view active">
+      <canvas id="town-canvas"></canvas>
+
+      <!-- Authentic Estate Nameplate -->
+      <div class="town-nameplate">
+        <img src="/api/game_asset/campaign/town/estate_title/arena_estate_nameplate.png" alt="" />
+        <span id="town-nameplate-text">屠夫马戏团 · THE BUTCHER'S CIRCUS</span>
+      </div>
+
+      <!-- Authentic Bottom Building Navigation Dock -->
+      <nav class="town-dock">
+        <button class="dock-btn" data-building="dueling_grounds" title="决斗场 · 本地双开 PvP">
+          <img src="/api/game_asset/campaign/town/buildings/dueling_grounds/dueling_grounds.town_button.png" alt="" />
+          <span>决斗场 (双开PvP)</span>
+        </button>
+        <button class="dock-btn featured" data-building="fight" title="血腥擂台 · 单人对战 Bot">
+          <img src="/api/game_asset/campaign/town/buildings/banner_customization/banner_customization.town_button.png" alt="" />
+          <span>血腥擂台 (对战Bot)</span>
+        </button>
+        <button class="dock-btn" data-building="rankings" title="排行榜 · 无头 Bot 锦标赛 & 录像">
+          <img src="/api/game_asset/campaign/town/buildings/rankings/rankings.town_button.png" alt="" />
+          <span>排行榜 (Bot锦标赛)</span>
+        </button>
+        <button class="dock-btn" data-building="prize_booth" title="奖品亭 · 实时 Bot vs Bot 观战">
+          <img src="/api/game_asset/campaign/town/buildings/prize_booth/prize_booth.town_button.png" alt="" />
+          <span>奖品亭 (Bot观战)</span>
+        </button>
+      </nav>
+
+      <!-- Building Modals styled with real DLC building art -->
+      <!-- Modal: THE RING (Play vs Bot) -->
+      <div id="modal-fight" class="building-modal hidden">
+        <div class="building-dialog dialog-fight">
+          <button class="dialog-close" data-close-modal="modal-fight">✕</button>
+          <div class="dialog-header">
+            <img src="/api/game_asset/campaign/town/buildings/banner_customization/banner_customization.icon.png" alt="" />
+            <div>
+              <h2>血腥擂台 · THE RING</h2>
+              <p>选择对手 AI 与阵容，进入配队界面组建你的 4 人马戏团战队</p>
+            </div>
+          </div>
+          <div class="dialog-body">
+            <div class="form-row">
+              <label>对手 AI (≤0.5s 时间展开概率搜索)</label>
+              <select id="vsbot-ai">
+                <option value="direct_kill">直伤斩杀 AI (时间展开搜索)</option>
+                <option value="stun_kill">强晕斩杀 AI (时间展开搜索)</option>
+                <option value="iron_wall">铁桶 AI (时间展开搜索)</option>
+                <option value="iron_hound">铁血猎犬 AI (时间展开搜索)</option>
+                <option value="shuffle_kill">乱位斩杀 AI (时间展开搜索)</option>
+                <option value="lookahead">综合前瞻 AI (时间展开搜索)</option>
+                <option value="stress">压力专精 AI (时间展开搜索)</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>对手阵容</label>
+              <select id="vsbot-preset"></select>
+            </div>
+            <button id="btn-start-vsbot" class="btn-crimson large full">⚔ 进入配队界面</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: DUELING GROUNDS (Local 2-Player Dual-Window PvP) -->
+      <div id="modal-dueling_grounds" class="building-modal hidden">
+        <div class="building-dialog dialog-duel">
+          <button class="dialog-close" data-close-modal="modal-dueling_grounds">✕</button>
+          <div class="dialog-header">
+            <img src="/api/game_asset/campaign/town/buildings/dueling_grounds/dueling_grounds.icon.png" alt="" />
+            <div>
+              <h2>决斗场 · DUELING GROUNDS (本地双开 PvP)</h2>
+              <p>创建双人房间后一键打开玩家 2 窗口，双视角独立选人、配技能、带饰品对战！</p>
+            </div>
+          </div>
+          <div class="dialog-body">
+            <button id="btn-create-pvp" class="btn-gold large full">🎭 创建双人对战房间</button>
+            <div class="divider"><span>或输入房间号加入</span></div>
+            <div class="join-row">
+              <input id="join-room-input" type="text" placeholder="CIRCUS-1234" />
+              <button id="btn-join-pvp" class="btn-crimson">加入决斗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: RANKINGS (Headless Bot Tournament Lab & Replays) -->
+      <div id="modal-rankings" class="building-modal hidden">
+        <div class="building-dialog dialog-rankings">
+          <button class="dialog-close" data-close-modal="modal-rankings">✕</button>
+          <div class="dialog-header">
+            <img src="/api/game_asset/campaign/town/buildings/rankings/rankings.icon.png" alt="" />
+            <div>
+              <h2>排行榜 · 无头 Bot 大规模对抗 & 数据可视化分析</h2>
+              <p>调用 Java 26 多线程无头引擎高速对打，自动保存完整锦标赛 JSON 数据并生成可视化对比报告</p>
+            </div>
+          </div>
+          <div class="dialog-body">
+            <div class="form-row">
+              <label>每组对局数</label>
+              <input id="lab-matches" type="number" min="2" max="100" value="10" />
+              <button id="btn-run-lab" class="btn-gold">🔥 运行无头锦标赛</button>
+              <button id="btn-open-report" class="btn-crimson hidden">📊 打开完整数据分析报告</button>
+              <button id="btn-report-center" class="btn-mini" onclick="window.open('/static/tournament_report.html','_blank')">📂 历史报告/导入</button>
+            </div>
+            <div id="lab-output" class="lab-output"></div>
+            <div class="replay-box">
+              <div class="replay-header">
+                <span>🎬 已保存对局录像</span>
+                <button id="btn-refresh-replays" class="btn-mini">↻ 刷新</button>
+              </div>
+              <div id="replay-list" class="replay-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: PRIZE BOOTH (Live Bot vs Bot Spectate) -->
+      <div id="modal-prize_booth" class="building-modal hidden">
+        <div class="building-dialog dialog-prize">
+          <button class="dialog-close" data-close-modal="modal-prize_booth">✕</button>
+          <div class="dialog-header">
+            <img src="/api/game_asset/campaign/town/buildings/prize_booth/prize_booth.icon.png" alt="" />
+            <div>
+              <h2>奖品亭 · 实时 Bot vs Bot 实况观战</h2>
+              <p>选择两支 AI 与阵容在完整 Spine 动画、特写镜头与音效的角斗场中厮杀</p>
+            </div>
+          </div>
+          <div class="dialog-body">
+            <div class="form-row">
+              <label>P1 Bot</label>
+              <select id="bvb-bot0">
+                <option value="direct_kill">直伤斩杀 AI (≤0.5s 搜索)</option>
+                <option value="stun_kill">强晕斩杀 AI (≤0.5s 搜索)</option>
+                <option value="iron_wall">铁桶 AI (≤0.5s 搜索)</option>
+                <option value="iron_hound">铁血猎犬 AI (≤0.5s 搜索)</option>
+                <option value="shuffle_kill">乱位斩杀 AI (≤0.5s 搜索)</option>
+                <option value="lookahead">综合搜索 AI (≤0.5s)</option>
+              </select>
+              <select id="bvb-preset0"></select>
+            </div>
+            <div class="form-row">
+              <label>P2 Bot</label>
+              <select id="bvb-bot1">
+                <option value="stun_kill">强晕斩杀 AI (≤0.5s 搜索)</option>
+                <option value="direct_kill">直伤斩杀 AI (≤0.5s 搜索)</option>
+                <option value="iron_wall">铁桶 AI (≤0.5s 搜索)</option>
+                <option value="iron_hound">铁血猎犬 AI (≤0.5s 搜索)</option>
+                <option value="shuffle_kill">乱位斩杀 AI (≤0.5s 搜索)</option>
+                <option value="lookahead">综合搜索 AI (≤0.5s)</option>
+              </select>
+              <select id="bvb-preset1"></select>
+            </div>
+            <button id="btn-start-bvb" class="btn-crimson large full">🤖 进入角斗场观战</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== VIEW 2: AUTHENTIC PARTY SETUP (配队界面) ==================== -->
+    <main id="view-setup" class="view">
+      <!-- Top Horizontal 18-Hero Roster Strip (matching party_setup.layout.darkest) -->
+      <div class="setup-top-roster">
+        <div id="hero-roster-strip" class="hero-roster-strip"></div>
+      </div>
+
+      <!-- Middle Main Area: 4-Hero Formation + Quick Skill/Trinket Panel + Right Connection Box -->
+      <div class="setup-main-grid">
+        <!-- Left/Center: 4-Hero Formation Cards (Rank 4 -> Rank 1) -->
+        <section class="setup-formation-area">
+          <div id="party-slots" class="party-slots"></div>
+
+          <!-- Inline Character Inspector styled with real arena_characterpanel_bg.png -->
+          <div class="char-sheet-wrap">
+            <div class="char-sheet-col skills-col">
+              <div class="sheet-title-row">
+                <span id="sheet-hero-title" class="sheet-hero-title">—</span>
+                <div class="skin-row">
+                  <span>皮肤:</span>
+                  <button class="skin-btn" data-variant="A">A</button>
+                  <button class="skin-btn" data-variant="B">B</button>
+                  <button class="skin-btn" data-variant="C">C</button>
+                  <button class="skin-btn" data-variant="D">D</button>
+                </div>
+              </div>
+              <div id="sheet-hero-stats" class="sheet-hero-stats"></div>
+              <div id="skill-picker" class="skill-picker"></div>
+            </div>
+
+            <div class="char-sheet-col trinkets-col">
+              <div class="sheet-title-row">
+                <span>马戏团饰品 (装备 2 件)</span>
+                <input id="trinket-search" type="text" placeholder="搜索饰品 / Search..." />
+              </div>
+              <div id="equipped-trinkets" class="equipped-trinkets"></div>
+              <div id="trinket-picker" class="trinket-picker"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Sidebar: Connection Card (connection_background.png) + PvP Invite + Lock In -->
+        <aside class="setup-right-col">
+          <div class="connection-card">
+            <div class="conn-title" id="conn-mode-title">OPPONENT / 对手连接</div>
+            <div class="conn-status" id="invite-seat-status">等待准备...</div>
+            <div id="pvp-invite-controls" class="pvp-invite-controls hidden">
+              <div class="room-code-row">房间号: <span id="invite-room-code" class="code-pill"></span></div>
+              <button id="btn-open-p2" class="btn-gold full">🪟 一键打开玩家 2 窗口 (双开)</button>
+              <button id="btn-copy-p2" class="btn-iron full">📋 复制玩家 2 链接</button>
+            </div>
+          </div>
+
+          <div class="setup-presets-box">
+            <div class="presets-head">
+              <span>📜 队伍预设 / Party Builder</span>
+              <button id="btn-toggle-builder" class="btn-mini">展开全部</button>
+            </div>
+            <div id="party-builder-list" class="party-builder-list"></div>
+          </div>
+
+          <div class="lockin-box">
+            <div id="ready-status" class="ready-status"></div>
+            <button id="btn-lock-in" class="btn-crimson large full">🔥 锁定阵容，步入角斗场！</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <!-- ==================== VIEW 3: AUTHENTIC IN-GAME COMBAT (1920x1080 战斗界面) ==================== -->
+    <main id="view-combat" class="view">
+      <!-- Spectator / Replay Control Strip -->
+      <div id="spectate-bar" class="spectate-bar hidden">
+        <span id="spectate-label">🎬 SPECTATE MODE</span>
+        <button id="btn-pause" class="btn-iron">⏸ Pause</button>
+        <button class="btn-iron speed-btn active" data-speed="1">1x</button>
+        <button class="btn-iron speed-btn" data-speed="2">2x</button>
+        <button class="btn-iron speed-btn" data-speed="3.5">3.5x</button>
+      </div>
+
+      <!-- Upper 720px Arena Stage Canvas -->
+      <div id="stage-wrap">
+        <canvas id="arena-canvas"></canvas>
+        <div id="stage-buff-tooltip" class="stage-buff-tooltip hidden"></div>
+      </div>
+
+      <!-- Authentic Iron Transition Bar (panels/panel_transition.png) -->
+      <div class="panel-transition-strip"></div>
+
+      <!-- Lower 360px Authentic Darkest Dungeon HUD (Full 1920x360 with side_decor.png scaled cleanly to viewport) -->
+      <div id="combat-hud-outer">
+        <div id="combat-hud-1920">
+          <!-- FAR LEFT 240x360: Authentic panels/side_decor.png + FocusCam & Surrender -->
+          <aside id="hud-side-left" class="hud-side-wing">
+            <div class="hud-wing-bg"></div>
+            <div class="hud-wing-controls left">
+              <button id="btn-hud-closeup" class="dd-focuscam-btn" title="Toggle Combat Close-Up Camera / 切换特写镜头">
+                <img src="/api/game_asset/panels/focuscam_button.png" alt="Close-Up" />
+                <span id="hud-closeup-badge" class="wing-badge">ON</span>
+              </button>
+              <button id="btn-surrender" class="dd-retreat-btn" title="Surrender / 投降">
+                <img src="/api/game_asset/panels/arena_retreat_button.png" alt="Surrender" />
+              </button>
+            </div>
+          </aside>
+
+          <!-- CENTER-LEFT 720x360: panel_banner.png (720x136) + arena_panel_hero.png (720x224) -->
+          <section id="hud-left-720">
+            <!-- Floating Skill / Status Tooltip anchored above Hero Banner (never covers resistances/trinkets) -->
+            <div id="hud-tooltip" class="dd-tooltip-float hidden"></div>
+
+            <!-- Top Banner (136px): Portrait + Seal, Name/Class, 4 Skills (1-4), Move (5), Pass -->
+            <div class="dd-hero-banner">
+              <div class="dd-portrait-wrap">
+                <img id="hud-hero-portrait" class="dd-portrait" alt="" />
+                <img id="hud-hero-seal" class="dd-portrait-seal hidden" alt="" />
+              </div>
+              <div class="dd-banner-nameblock">
+                <div id="hud-hero-name" class="dd-hero-name">—</div>
+                <div class="dd-name-meta">
+                  <span id="hud-hero-rank" class="rank-pill">R1</span>
+                  <span id="hud-hero-trait" class="trait-pill hidden"></span>
+                </div>
+              </div>
+              <div class="dd-ability-rail">
+                <div id="hud-skills" class="dd-skills"></div>
+                <button id="btn-move" class="dd-move-btn" title="Move / 移动">
+                  <img src="/api/game_asset/panels/icons_ability/ability_move.png" alt="Move" />
+                </button>
+                <button id="btn-pass" class="dd-pass-btn" title="Pass / 跳过">
+                  <img id="btn-pass-img" src="/api/game_asset/panels/icons_ability/ability_pass.png" alt="Pass" />
+                </button>
+              </div>
+              <div id="move-drawer" class="move-drawer hidden"></div>
+            </div>
+
+            <!-- Bottom Hero Panel (224px): Exact arena_panel_hero.png texture -->
+            <div class="dd-hero-panel-bg">
+              <div class="dd-hp-val" id="hud-hero-hp">— / —</div>
+              <div class="dd-stress-val" id="hud-hero-stress">— / 200</div>
+              <div class="dd-stats-col" id="hud-hero-stats"></div>
+              <div class="dd-res-col" id="hud-hero-res"></div>
+              <div class="dd-trinket-slots" id="hud-hero-trinkets"></div>
+            </div>
+          </section>
+
+          <!-- CENTER-RIGHT 720x360: Exact arena_panel_monster.png texture -->
+          <section id="hud-right-720">
+            <!-- Collapsible Floating Combat Log above Enemy Panel (does not cover trinkets/resistances) -->
+            <div id="combat-log-drawer" class="combat-log-drawer collapsed">
+              <div class="combat-log-head">
+                <span>📜 竞技场战报 / Combat Log</span>
+                <button id="btn-close-log" class="btn-mini">✕</button>
+              </div>
+              <div id="combat-log" class="combat-log"></div>
+            </div>
+
+            <div class="dd-monster-panel-bg">
+              <div class="dd-enemy-header">
+                <span id="hud-enemy-name" class="dd-enemy-name">—</span>
+                <span id="hud-enemy-rank" class="rank-pill enemy">R1</span>
+                <span id="hud-enemy-trait" class="trait-pill hidden"></span>
+              </div>
+              <div class="dd-enemy-stats" id="hud-enemy-stats"></div>
+              <div class="dd-enemy-skills" id="hud-enemy-skills"></div>
+              <div class="dd-enemy-portrait-wrap">
+                <img id="hud-enemy-portrait" class="dd-enemy-portrait" alt="" />
+                <img id="hud-enemy-seal" class="dd-enemy-seal hidden" alt="" />
+              </div>
+              <div class="dd-enemy-trinkets" id="hud-enemy-trinkets"></div>
+              <div class="dd-enemy-res" id="hud-enemy-res"></div>
+              <div class="dd-enemy-hp" id="hud-enemy-hp">— / —</div>
+              <div class="dd-enemy-stress" id="hud-enemy-stress">— / 200</div>
+              <div class="dd-enemy-statuses" id="hud-enemy-statuses"></div>
+            </div>
+          </section>
+
+          <!-- FAR RIGHT 240x360: Mirrored panels/side_decor.png + Combat Log Toggle -->
+          <aside id="hud-side-right" class="hud-side-wing mirrored">
+            <div class="hud-wing-bg"></div>
+            <div class="hud-wing-controls right">
+              <button id="btn-toggle-log" class="log-toggle-btn">📜 战报</button>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Victory / Defeat Raid Results Overlay (using real arena_victory/defeat_background.png) -->
+      <div id="results-modal" class="modal hidden">
+        <div id="results-card" class="results-card">
+          <h1 id="results-title">VICTORY!</h1>
+          <p id="results-subtitle"></p>
+          <div id="results-stats" class="results-stats"></div>
+          <div class="modal-actions">
+            <button id="btn-rematch" class="btn-crimson large">再来一局 / Rematch</button>
+            <button id="btn-results-lobby" class="btn-gold large">返回马戏团 / Circus Hub</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="/static/js/main.js?v=13"></script>
+</body>
+</html>

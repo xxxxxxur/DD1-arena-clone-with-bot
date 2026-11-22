@@ -1,0 +1,76 @@
+{
+  "id": "bleed_blight_dot",
+  "name": "猩红瘟疫队 AI",
+  "name_en": "Crimson Plague (DoT Control)",
+  "name_zh": "猩红瘟疫队（流血腐蚀）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25
+  },
+  "team": {
+    "name": "Crimson Plague",
+    "heroes": [
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "rain_of_sorrows",
+          "exsanguinate",
+          "redeem"
+        ],
+        "trinkets": [
+          "crown_of_thorns",
+          "crimson_hook"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "hellion",
+        "skills": [
+          "if_it_bleeds",
+          "wicked_hack",
+          "iron_swan",
+          "barbaric_yawp"
+        ],
+        "trinkets": [
+          "executioner_halberd",
+          "jagged_chopper"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_harry",
+          "hounds_rush",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "tattered_chewtoy",
+          "attack_whistle"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "plague_doctor",
+        "skills": [
+          "plague_grenade",
+          "blinding_gas",
+          "battlefield_medicine",
+          "disorienting_blast"
+        ],
+        "trinkets": [
+          "acrid_vial",
+          "rotting_trophy"
+        ],
+        "variant": "A",
+        "name": ""
+      }
+    ]
+  }
+}

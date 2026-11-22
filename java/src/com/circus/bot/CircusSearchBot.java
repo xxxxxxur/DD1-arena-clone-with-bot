@@ -1,0 +1,908 @@
+package com.circus.bot;
+
+import com.circus.engine.ArenaEngine;
+import com.circus.engine.EffectiveStats;
+import com.circus.engine.Models;
+import com.circus.engine.Models.*;
+import com.circus.engine.StatKey;
+
+import java.util.*;
+
+/**
+ * High-performance Iterative-Deepening Expectimax / Alpha-Beta Search Bot for The Butcher's Circus.
+ *
+ * Key Java performance & search optimizations over the Python version:
+ * 1. Zero-event-allocation simulation via {@link ArenaEngine#cloneForSearch()}.
+ * 2. Zero-HashMap single-pass primitive {@link EffectiveStats} evaluation.
+ * 3. Per-node cached ally threat computation (computed once per node instead of once per action).
+ * 4. Flat-array Transposition Table (65,536 entries) with Zobrist-like 64-bit state hashes and PV move hints.
+ * 5. Principal Variation (PV) + Killer Move ordering for dramatically stronger Alpha-Beta pruning.
+ * 6. Amortized deadline polling (every 64 nodes) -> achieves much deeper search plies in shorter time budgets!
+ */
+public class CircusSearchBot extends AbstractBot {
+    public record SearchProfile(
+            double killWeight,
+            double survivalWeight,
+            double damageWeight,
+            double stunWeight,
+            double stressWeight,
+            double disruptionWeight,
+            double defenseWeight
+    ) {}
+
+    public static final Map<String, SearchProfile> PROFILES = Map.of(
+            "balanced", new SearchProfile(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+            "direct_kill", new SearchProfile(1.15, 1.0, 1.22, 0.95, 1.0, 1.0, 0.95),
+            "stun_kill", new SearchProfile(1.15, 1.0, 1.08, 1.35, 1.0, 1.25, 1.0),
+            "iron_wall", new SearchProfile(1.0, 1.25, 0.95, 1.0, 1.15, 1.0, 1.35),
+            "iron_hound", new SearchProfile(1.0, 1.22, 1.05, 1.0, 1.18, 1.0, 1.28),
+            "shuffle_kill", new SearchProfile(1.15, 1.0, 1.18, 1.10, 1.0, 1.35, 1.0),
+            "stress", new SearchProfile(1.0, 1.05, 1.0, 1.10, 1.55, 1.0, 1.0)
+    );
+
+    private static final int TT_SIZE = 1 << 16; // 65,536 entries
+    private static final int TT_MASK = TT_SIZE - 1;
+    private static final byte TT_EXACT = 1;
+    private static final byte TT_LOWER = 2;
+    private static final byte TT_UPPER = 3;
+    private static final int MAX_KILLER_PLY = 16;
+
+    protected final double timeBudgetSec;
+    protected final SearchProfile profile;
+    protected final int maxDepth;
+    protected final int rootWidth;
+    protected final int branchWidth;
+
+    // Transposition Table (reused across decisions, stamped by generation to avoid clearing arrays!)
+    private final long[] ttKey = new long[TT_SIZE];
+    private final double[] ttVal = new double[TT_SIZE];
+    private final byte[] ttDepth = new byte[TT_SIZE];
+    private final byte[] ttFlag = new byte[TT_SIZE];
+    private final int[] ttGen = new int[TT_SIZE];
+    private final Action[] ttMove = new Action[TT_SIZE];
+    private int searchGen = 0;
+
+    // Killer moves per ply
+    private final Action[][] killers = new Action[MAX_KILLER_PLY][2];
+
+    // Reusable scratchpad stats (single-threaded per bot instance)
+    private final EffectiveStats scratchA = new EffectiveStats();
+    private final EffectiveStats scratchB = new EffectiveStats();
+    private final ArenaEngine.SearchScratch simulationScratch = new ArenaEngine.SearchScratch();
+    private final double[] threatScratch = new double[4];
+    private final String[] threatUidScratch = new String[4];
+
+    // Search telemetry for benchmarking and diagnostics
+    private int lastDepthReached = 0;
+    private int lastNodesVisited = 0;
+    private int lastTtHits = 0;
+    private double lastElapsedMs = 0.0;
+
+    // Per-search runtime counters
+    private long deadlineNs;
+    private boolean timeUp;
+    private int nodesVisited;
+    private int ttHits;
+
+    public CircusSearchBot(
+            String name,
+            double timeBudgetSec,
+            String profileName,
+            Long seed,
+            String presetId,
+            int maxDepth,
+            int rootWidth,
+            int branchWidth
+    ) {
+        super(name != null ? name : "CircusSearchBot", presetId);
+        this.timeBudgetSec = Math.min(0.46, Math.max(0.005, timeBudgetSec));
+        this.profile = PROFILES.getOrDefault(profileName != null ? profileName : "balanced", PROFILES.get("balanced"));
+        this.maxDepth = Math.max(1, maxDepth);
+        this.rootWidth = Math.max(2, rootWidth);
+        this.branchWidth = Math.max(2, branchWidth);
+    }
+
+    public CircusSearchBot(String name, double timeBudgetSec, String profileName, Long seed, String presetId) {
+        this(name, timeBudgetSec, profileName, seed, presetId, 10, 14, 6);
+    }
+
+    public CircusSearchBot(BotContext ctx) {
+        this(
+                ctx.name(),
+                ctx.effectiveTimeBudget(0.25),
+                ctx.optionString("profile", "balanced"),
+                ctx.seed(),
+                ctx.presetId(),
+                ctx.optionInt("max_depth", 10),
+                ctx.optionInt("root_width", 14),
+                ctx.optionInt("branch_width", 6)
+        );
+        if (ctx.teamConfig() != null) setFixedTeam(ctx.teamConfig());
+    }
+
+    public CircusSearchBot(double timeBudgetSec) {
+        this("CircusSearchBot", timeBudgetSec, "balanced", null, null);
+    }
+
+    public int getLastDepthReached() { return lastDepthReached; }
+    public int getLastNodesVisited() { return lastNodesVisited; }
+    public int getLastTtHits() { return lastTtHits; }
+    public double getLastElapsedMs() { return lastElapsedMs; }
+
+    private boolean checkDeadline() {
+        if (timeUp) return true;
+        if ((nodesVisited & 63) == 0 && System.nanoTime() >= deadlineNs) {
+            timeUp = true;
+            return true;
+        }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ Threat & State Evaluation
+    private int computeAllyThreats(ArenaEngine engine, int team) {
+        int opp = 1 - team;
+        boolean oppHasActions = false;
+        ArrayList<UnitState> oppList = engine.state.teams[opp];
+        for (int i = 0, n = oppList.size(); i < n; i++) {
+            UnitState u = oppList.get(i);
+            if (u.alive && !u.isCorpse && !u.actedThisRound && !u.stunned) {
+                oppHasActions = true;
+                break;
+            }
+        }
+
+        int count = 0;
+        ArrayList<UnitState> myList = engine.state.teams[team];
+        for (int i = 0, n = myList.size(); i < n; i++) {
+            UnitState u = myList.get(i);
+            if (!u.alive || u.isCorpse) continue;
+            double t = 0.0;
+            if (u.atDeathsDoor && u.hp <= 0) {
+                t = oppHasActions ? 1.25 : 0.85;
+                if (u.guardedByUid != null) t *= 0.45;
+                if (u.aegisBlocks > 0) t *= 0.50;
+                if (u.stealthRounds > 0) t *= 0.55;
+                if (u.stress >= 165) t = Math.max(t, 1.45);
+            } else {
+                double hpFrac = (double) u.hp / Math.max(1, u.maxHp);
+                if (hpFrac <= 0.25) t = oppHasActions ? 0.55 : 0.30;
+                else if (hpFrac <= 0.42) t = 0.22;
+                if (u.stress >= 175) t = Math.max(t, 0.70);
+                if (u.markedRounds > 0) t *= 1.25;
+                if (u.guardedByUid != null) t *= 0.55;
+            }
+            if (count < 4) {
+                threatUidScratch[count] = u.uid;
+                threatScratch[count] = t;
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private double lookupThreat(String uid, int threatCount) {
+        for (int i = 0; i < threatCount; i++) {
+            if (threatUidScratch[i].equals(uid)) return threatScratch[i];
+        }
+        return 0.0;
+    }
+
+    private static double heroValueWeight(UnitState u) {
+        double w = 1.0;
+        String hid = u.heroId;
+        if ("vestal".equals(hid) || "occultist".equals(hid) || "flagellant".equals(hid) || "arbalest".equals(hid)) {
+            w += 0.14;
+        } else if ("bounty_hunter".equals(hid) || "highwayman".equals(hid) || "shieldbreaker".equals(hid)
+                || "jester".equals(hid) || "grave_robber".equals(hid)) {
+            w += 0.10;
+        }
+        if (!u.actedThisRound && !u.stunned) {
+            w += 0.12;
+        }
+        return w;
+    }
+
+    private double unitStateScore(UnitState u, int oppUnacted, boolean isMine) {
+        SearchProfile p = this.profile;
+        double valW = heroValueWeight(u);
+        double base = 1850.0 * (isMine ? p.survivalWeight : p.killWeight) * valW;
+
+        double hpFrac = (double) u.hp / Math.max(1, u.maxHp);
+        // Fast concave HP curve (approx hpFrac^0.72 without slow Math.pow on 0/1 extremes)
+        double hpScore = (hpFrac <= 0.0) ? 0.0 : (hpFrac >= 1.0 ? 320.0 : Math.pow(hpFrac, 0.72) * 320.0);
+
+        double ddPen = 0.0;
+        if (u.atDeathsDoor && u.hp <= 0) {
+            ddPen = 420.0 + (oppUnacted > 0 ? 160.0 : 40.0);
+            if (u.guardedByUid != null) ddPen *= 0.55;
+            if (u.aegisBlocks > 0) ddPen *= 0.60;
+            if (u.stealthRounds > 0) ddPen *= 0.65;
+            if ("flagellant".equals(u.heroId)) ddPen *= 0.72;
+        }
+
+        int s = u.stress;
+        double stressPen;
+        if (s >= 165) {
+            stressPen = 135.0 + (s - 165) * 6.5;
+            if (u.atDeathsDoor) stressPen += 320.0;
+        } else if (s >= 100) {
+            stressPen = 75.0 + (s - 100) * 0.92;
+        } else {
+            stressPen = s * 0.68;
+        }
+        if (!isMine) stressPen *= p.stressWeight;
+
+        double status = 0.0;
+        if (u.stunned) status -= (!u.actedThisRound ? 175.0 : 45.0);
+        else if (u.dazed && !u.actedThisRound) status -= 48.0;
+        if (!u.actedThisRound && !u.stunned) status += 48.0;
+        if (u.isVirtuous) status += 145.0;
+        else if (u.isAfflicted) status -= 115.0;
+        if (u.riposteRounds > 0) status += 82.0 * p.defenseWeight;
+        if (u.aegisBlocks > 0) status += 68.0 * u.aegisBlocks * p.defenseWeight;
+        if (u.stealthRounds > 0) status += 58.0;
+        if (u.guardingUid != null) status += 42.0 * p.defenseWeight;
+        if (u.guardedByUid != null) status += u.atDeathsDoor ? 95.0 : 38.0;
+        if (u.markedRounds > 0) status -= (hpFrac < 0.5 ? 65.0 : 35.0);
+
+        ArrayList<ActiveDot> dots = u.dots;
+        for (int i = 0, n = dots.size(); i < n; i++) {
+            ActiveDot dot = dots.get(i);
+            int rem = Math.min(dot.roundsLeft, 3);
+            if (dot.kind == Models.DOT_BLEED || dot.kind == Models.DOT_BLIGHT) {
+                int effDmg = Math.min(Math.max(0, u.hp), dot.amount * rem);
+                status -= effDmg * 6.2;
+            } else if (dot.kind == Models.DOT_HORROR) {
+                status -= dot.amount * rem * 2.4;
+            } else if (dot.kind == Models.DOT_REGEN) {
+                status += dot.amount * rem * 8.5;
+            }
+        }
+
+        int usableSkills = 0;
+        SkillDef[] eq = u.equippedSkillDefs;
+        for (int i = 0; i < eq.length; i++) {
+            if (eq[i] != null && eq[i].canLaunchFrom(u.rank)) usableSkills++;
+        }
+        if (usableSkills == 0) status -= 150.0;
+        else if (usableSkills == 1) status -= 55.0;
+
+        if ("jester".equals(u.heroId) && u.finaleBonusPct > 0.0) {
+            status += Math.min(1.5, u.finaleBonusPct) * 70.0;
+        }
+
+        return base + hpScore - ddPen - stressPen + status;
+    }
+
+    public double evaluateState(ArenaEngine engine, int myTeam) {
+        if (engine.state.finished) {
+            if (engine.state.winner != null && engine.state.winner == myTeam) {
+                return 100000.0 - engine.state.roundNum * 5.0;
+            }
+            return -100000.0 + engine.state.roundNum * 5.0;
+        }
+
+        int oppTeam = 1 - myTeam;
+        ArrayList<UnitState> myList = engine.state.teams[myTeam];
+        ArrayList<UnitState> enList = engine.state.teams[oppTeam];
+
+        int myUnacted = 0, enUnacted = 0;
+        int myCorpses = 0, enCorpses = 0;
+        for (int i = 0, n = myList.size(); i < n; i++) {
+            UnitState u = myList.get(i);
+            if (u.alive) {
+                if (u.isCorpse) myCorpses++;
+                else if (!u.actedThisRound && !u.stunned) myUnacted++;
+            }
+        }
+        for (int i = 0, n = enList.size(); i < n; i++) {
+            UnitState u = enList.get(i);
+            if (u.alive) {
+                if (u.isCorpse) enCorpses++;
+                else if (!u.actedThisRound && !u.stunned) enUnacted++;
+            }
+        }
+
+        double myScore = 0.0;
+        for (int i = 0, n = myList.size(); i < n; i++) {
+            UnitState u = myList.get(i);
+            if (u.alive && !u.isCorpse) myScore += unitStateScore(u, enUnacted, true);
+        }
+        double enScore = 0.0;
+        for (int i = 0, n = enList.size(); i < n; i++) {
+            UnitState u = enList.get(i);
+            if (u.alive && !u.isCorpse) enScore += unitStateScore(u, myUnacted, false);
+        }
+
+        double corpseTerm = (enCorpses - myCorpses) * 14.0;
+        double turnBonus = (engine.state.activeTeam == myTeam) ? 24.0 : -24.0;
+        return myScore - enScore + corpseTerm + turnBonus;
+    }
+
+    // ------------------------------------------------------------------ Analytical EV Action Scorer
+    protected double scoreActionEv(
+            ArenaEngine engine, Action act, int team,
+            int threatCount, double maxAllyThreat, boolean anyAllyDd, boolean oppHasCorpse
+    ) {
+        SearchProfile p = this.profile;
+        if ("SURRENDER".equals(act.kind)) return -99999.0;
+        UnitState actor = engine.findUnit(act.actorUid);
+        if (actor == null || !actor.alive) return -1000.0;
+
+        int oppTeam = 1 - team;
+
+        if ("PASS".equals(act.kind)) {
+            return actor.stunned ? 20.0 : -380.0;
+        }
+        if ("MOVE".equals(act.kind)) {
+            int curUsable = 0, newUsable = 0;
+            int newRank = (int) ArenaEngine.clamp(actor.rank - act.moveDelta, 1, Math.max(1, engine.countActiveSlots(team)));
+            for (SkillDef sd : actor.equippedSkillDefs) {
+                if (sd != null) {
+                    if (sd.canLaunchFrom(actor.rank)) curUsable++;
+                    if (sd.canLaunchFrom(newRank)) newUsable++;
+                }
+            }
+            return -140.0 + (newUsable - curUsable) * 75.0;
+        }
+
+        HeroDef hdef = actor.heroDef;
+        SkillDef sdef = hdef.getSkill(act.skillId);
+        if (sdef == null) return -500.0;
+
+        double score = 0.0;
+
+        if ("enemy".equals(sdef.targetTeam)) {
+            for (int ti = 0, tn = act.targetUids.size(); ti < tn; ti++) {
+                UnitState rawT = engine.findUnit(act.targetUids.get(ti));
+                if (rawT == null || !rawT.alive) continue;
+                UnitState t = rawT;
+                if (!sdef.isAoe && !sdef.ignoresGuard && rawT.guardedByUid != null) {
+                    UnitState g = engine.findUnit(rawT.guardedByUid);
+                    if (g != null && g.alive && !g.isCorpse) t = g;
+                }
+
+                if (t.isCorpse) {
+                    score += sdef.clearsCorpses ? 38.0 : 12.0;
+                    continue;
+                }
+
+                EffectiveStats astats = engine.computeEffectiveStats(actor, t, sdef.isRanged ? "ranged" : "melee", scratchA);
+                EffectiveStats tstats = engine.computeEffectiveStats(t, null, "", scratchB);
+
+                double valW = heroValueWeight(t);
+                double pHit = ArenaEngine.clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0) / 100.0;
+
+                boolean isBleed = t.hasDotKind(Models.DOT_BLEED);
+                boolean isBlight = t.hasDotKind(Models.DOT_BLIGHT);
+                boolean isMarked = t.markedRounds > 0;
+
+                double critPct = astats.values[StatKey.CRIT] + sdef.critMod + tstats.values[StatKey.CRITS_RECEIVED];
+                double dbBonus = sdef.deathblowBonus + astats.values[StatKey.DEATHBLOW_CHANCE];
+                if (sdef.isFinale) critPct += astats.values[StatKey.FINALE_CRIT];
+                if (isMarked) {
+                    critPct += sdef.bonusCritVsMarked;
+                    if ("aimed_shot".equals(sdef.id) || "sniper_shot".equals(sdef.id)) dbBonus += 30.0;
+                }
+                if (t.isAfflicted && "bloodlet".equals(sdef.id)) dbBonus += 40.0;
+                if (isBleed) critPct += sdef.bonusCritVsBleed;
+                if (isBlight) critPct += sdef.bonusCritVsBlight;
+                double pCrit = ArenaEngine.clamp(critPct, 0.0, 100.0) / 100.0;
+
+                double expDmg = 0.0;
+                if (sdef.dmgMod > -1.0) {
+                    if (t.aegisBlocks > 0) {
+                        score += pHit * (t.atDeathsDoor ? 155.0 : 65.0);
+                    } else {
+                        int lo = ("abomination".equals(hdef.id) && actor.isBeast) ? hdef.beastDmgMin : hdef.dmgMin;
+                        int hi = ("abomination".equals(hdef.id) && actor.isBeast) ? hdef.beastDmgMax : hdef.dmgMax;
+                        double mult = 1.0 + sdef.dmgMod + astats.values[StatKey.DMG_PCT];
+                        if ("sidearm".equals(sdef.id)) {
+                            boolean anyActed = false;
+                            ArrayList<UnitState> myL = engine.state.teams[team];
+                            for (int k = 0; k < myL.size(); k++) {
+                                UnitState u = myL.get(k);
+                                if (u.alive && !u.isCorpse && u != actor && u.actedThisRound) {
+                                    anyActed = true;
+                                    break;
+                                }
+                            }
+                            if (!anyActed) mult += 0.30;
+                        }
+                        if (isMarked) mult += sdef.bonusDmgVsMarked + astats.values[StatKey.DMG_VS_MARKED_PCT];
+                        if (isBleed) mult += sdef.bonusDmgVsBleed + astats.values[StatKey.DMG_VS_BLEED_PCT];
+                        if (isBlight) mult += sdef.bonusDmgVsBlight + astats.values[StatKey.DMG_VS_BLIGHT_PCT];
+                        if (t.stunned) mult += sdef.bonusDmgVsStunned + astats.values[StatKey.DMG_VS_STUNNED_PCT];
+                        else if (t.dazed && "finish_him".equals(sdef.id)) mult += 0.30;
+                        if (t.guardedByUid != null) mult += sdef.bonusDmgVsGuarded;
+                        if (sdef.isFinale) mult += astats.values[StatKey.FINALE_DAMAGE];
+                        if ("rake".equals(sdef.id)) mult += astats.values[StatKey.RAKE_DMG_PCT];
+                        mult = Math.max(0.10, mult);
+
+                        double avgRaw = ((lo + hi) * 0.5 * (1.0 - pCrit) + hi * 1.5 * pCrit) * mult;
+                        double protEff = sdef.armorPiercing ? 0.0 : Math.max(0.0, tstats.values[StatKey.PROT] - astats.values[StatKey.ARMOR_PIERCE]);
+                        avgRaw *= (1.0 - protEff) * (1.0 + tstats.values[StatKey.DAMAGE_TAKEN_PCT]);
+                        expDmg = Math.max(1.0, avgRaw);
+
+                        // PRIORITY #1: ACTUAL KILL PROBABILITY
+                        if (t.atDeathsDoor && t.hp <= 0) {
+                            double pDb = ArenaEngine.clamp(100.0 - tstats.values[StatKey.DEATHBLOW_RES] + dbBonus, 5.0, 100.0) / 100.0;
+                            score += (pHit * pDb) * 2350.0 * p.killWeight * valW;
+                        } else if (sdef.isFinale && expDmg >= t.hp) {
+                            double pKill = pHit * ArenaEngine.clamp(expDmg / Math.max(1.0, t.hp), 0.5, 1.0);
+                            score += pKill * 2300.0 * p.killWeight * valW;
+                        } else {
+                            double effHpDmg = Math.min(t.hp, expDmg);
+                            double woundMult = 1.0 + 0.55 * (1.0 - (double) t.hp / Math.max(1, t.maxHp));
+                            score += pHit * effHpDmg * 13.5 * woundMult * p.damageWeight * valW;
+                            if (expDmg >= t.hp) {
+                                score += pHit * 240.0 * p.damageWeight * valW;
+                            }
+                        }
+                    }
+                }
+
+                // Stress damage & Heart Attack KILL probability
+                double baseStress = sdef.stressDmg + (expDmg > 0 ? 10.0 * pCrit : 0.0);
+                if (baseStress > 0) {
+                    double expStress = baseStress * Math.max(0.25, 1.0 + astats.values[StatKey.STRESS_DMG_PCT])
+                            * (1.0 - tstats.values[StatKey.STRESS_RES] / 100.0);
+                    if (t.stress + expStress >= 200.0 && t.atDeathsDoor && t.hp <= 0) {
+                        score += pHit * 2550.0 * p.killWeight * valW;
+                    } else if (t.stress + expStress >= 200.0) {
+                        score += pHit * 480.0 * p.stressWeight * valW;
+                    } else if (t.stress < 100 && t.stress + expStress >= 100.0) {
+                        score += pHit * 240.0 * p.stressWeight * valW;
+                    } else {
+                        double urgency = t.stress >= 140 ? 1.65 : (t.stress >= 80 ? 1.2 : 0.85);
+                        score += pHit * expStress * 5.2 * urgency * p.stressWeight;
+                    }
+                }
+
+                // Stun & Daze
+                if (sdef.stunChance > 0 && !t.stunned) {
+                    double pStun = pHit * ArenaEngine.clamp((sdef.stunChance + astats.values[StatKey.STUN_CHANCE] + 20.0 * pCrit - tstats.values[StatKey.STUN_RES]) / 100.0, 0.0, 1.0);
+                    if (!t.actedThisRound) {
+                        double stunVal = 290.0 * valW;
+                        if (anyAllyDd) stunVal += 360.0 * p.survivalWeight;
+                        if (t.guardingUid != null) stunVal += 180.0;
+                        score += pStun * stunVal * p.stunWeight;
+                    } else {
+                        score += pStun * 55.0 * p.stunWeight;
+                    }
+                }
+                if (sdef.dazeChance > 0 && !t.stunned && !t.dazed && !t.actedThisRound) {
+                    double pDaze = pHit * ArenaEngine.clamp((sdef.dazeChance + astats.values[StatKey.STUN_CHANCE] + 20.0 * pCrit - tstats.values[StatKey.STUN_RES]) / 100.0, 0.0, 1.0);
+                    score += pDaze * (anyAllyDd ? 145.0 : 95.0) * p.stunWeight * valW;
+                }
+
+                // Guard Break
+                if (sdef.breaksGuard && (t.guardingUid != null || t.guardedByUid != null)) {
+                    UnitState prot = t.guardingUid != null ? engine.findUnit(t.guardingUid) : t;
+                    double gbVal = (prot != null && prot.atDeathsDoor) ? 340.0 : 150.0;
+                    score += pHit * gbVal * p.disruptionWeight;
+                }
+                if (sdef.deStealth && t.stealthRounds > 0) {
+                    score += pHit * (t.atDeathsDoor ? 175.0 : 85.0);
+                }
+                if (sdef.markRounds > 0 && t.markedRounds == 0) {
+                    score += pHit * 95.0;
+                }
+
+                // Bleed / Blight DoTs
+                if (sdef.bleed != null && !(t.atDeathsDoor && t.hp <= 0)) {
+                    double pDot = pHit * ArenaEngine.clamp((sdef.bleed.chance + astats.values[StatKey.BLEED_CHANCE] + 20.0 * pCrit - tstats.values[StatKey.BLEED_RES]) / 100.0, 0.0, 1.0);
+                    score += pDot * Math.min(t.hp, sdef.bleed.amount * Math.min(sdef.bleed.rounds, 3)) * 9.0 * p.damageWeight;
+                }
+                if (sdef.blight != null && !(t.atDeathsDoor && t.hp <= 0)) {
+                    double pDot = pHit * ArenaEngine.clamp((sdef.blight.chance + astats.values[StatKey.BLIGHT_CHANCE] + 20.0 * pCrit - tstats.values[StatKey.BLIGHT_RES]) / 100.0, 0.0, 1.0);
+                    score += pDot * Math.min(t.hp, sdef.blight.amount * Math.min(sdef.blight.rounds, 3)) * 9.0 * p.damageWeight;
+                }
+
+                // Pull / Push rank disruption
+                if ((sdef.pull > 0 || sdef.push > 0) && !t.isCorpse) {
+                    double pMv = pHit * ArenaEngine.clamp((sdef.moveChance + astats.values[StatKey.MOVE_CHANCE] - tstats.values[StatKey.MOVE_RES]) / 100.0, 0.0, 1.0);
+                    double disrupt;
+                    String tid = t.heroId;
+                    if (sdef.pull > 0 && t.rank >= 3 && ("vestal".equals(tid) || "arbalest".equals(tid) || "musketeer".equals(tid)
+                            || "houndmaster".equals(tid) || "plague_doctor".equals(tid) || "occultist".equals(tid))) {
+                        disrupt = 145.0;
+                    } else if (sdef.push > 0 && t.rank <= 2 && ("crusader".equals(tid) || "leper".equals(tid)
+                            || "flagellant".equals(tid) || "hellion".equals(tid) || "abomination".equals(tid))) {
+                        disrupt = 140.0;
+                    } else {
+                        disrupt = 42.0;
+                    }
+                    score += pMv * disrupt * p.disruptionWeight;
+                }
+
+                if (sdef.targetDebuffs.length > 0) {
+                    score += pHit * 45.0 * sdef.targetDebuffs.length;
+                }
+                if (sdef.triggersRiposte() && t.riposteRounds > 0 && !t.stunned) {
+                    if (actor.atDeathsDoor && actor.hp <= 0) score -= 620.0 * p.survivalWeight;
+                    else score -= 70.0;
+                }
+            }
+
+            if (sdef.riposteRounds > 0 && actor.riposteRounds == 0) score += 135.0 * p.defenseWeight;
+            if (sdef.aegisBlocks > 0) score += (actor.atDeathsDoor ? 260.0 : 115.0) * sdef.aegisBlocks * p.survivalWeight;
+            if (sdef.selfHealMax > 0) {
+                int missing = actor.maxHp - actor.hp;
+                if (actor.atDeathsDoor && actor.hp <= 0) score += 1400.0 * p.survivalWeight;
+                else score += Math.min(missing, (sdef.selfHealMin + sdef.selfHealMax) * 0.5) * 10.5;
+            }
+            if (sdef.clearsCorpses && oppHasCorpse) score += 65.0;
+        } else {
+            // FRIENDLY / SELF / SURVIVAL SKILLS
+            if (sdef.isTransform) {
+                if (!actor.isBeast) {
+                    boolean enDd = false;
+                    for (UnitState u : engine.state.teams[oppTeam]) {
+                        if (u.alive && !u.isCorpse && u.atDeathsDoor) { enDd = true; break; }
+                    }
+                    int sumStress = 0, aliveCnt = 0;
+                    for (UnitState u : engine.state.teams[team]) {
+                        if (u.alive && !u.isCorpse) { sumStress += u.stress; aliveCnt++; }
+                    }
+                    double avgStress = (double) sumStress / Math.max(1, aliveCnt);
+                    score += (enDd ? 260.0 : 115.0) - Math.max(0.0, avgStress - 65.0) * 3.0;
+                } else {
+                    score += (actor.hp < actor.maxHp * 0.35 || actor.stress > 120) ? 180.0 : -120.0;
+                }
+            }
+
+            for (int ti = 0, tn = act.targetUids.size(); ti < tn; ti++) {
+                UnitState t = engine.findUnit(act.targetUids.get(ti));
+                if (t == null || !t.alive) continue;
+                double tThreat = lookupThreat(t.uid, threatCount);
+                double valW = heroValueWeight(t);
+
+                if (sdef.healMax > 0 || sdef.healPct != 0.0) {
+                    double avgHeal = sdef.healPct != 0.0 ? t.maxHp * sdef.healPct : (sdef.healMin + sdef.healMax) * 0.5;
+                    int missing = Math.max(0, t.maxHp - t.hp);
+                    if (t.atDeathsDoor && t.hp <= 0) {
+                        score += (1850.0 + Math.min(missing, avgHeal) * 14.0) * p.survivalWeight * valW;
+                    } else if (missing > 0) {
+                        double frac = (double) t.hp / Math.max(1, t.maxHp);
+                        double urgency = frac < 0.35 ? 2.4 : (frac < 0.65 ? 1.35 : 0.55);
+                        score += Math.min(missing, avgHeal) * 14.0 * urgency * p.survivalWeight * valW;
+                    } else {
+                        score -= 25.0;
+                    }
+                }
+
+                if (sdef.guardRounds > 0 && t != actor) {
+                    if (t.atDeathsDoor && t.hp <= 0 && t.guardedByUid == null) {
+                        score += 1480.0 * p.survivalWeight * valW;
+                    } else if (tThreat >= 0.45 && t.guardedByUid == null) {
+                        score += 480.0 * tThreat * p.survivalWeight * p.defenseWeight;
+                    } else if (t.guardedByUid == null) {
+                        score += 110.0 * p.defenseWeight;
+                    } else {
+                        score -= 80.0;
+                    }
+                }
+
+                if (sdef.guardMeRounds > 0 && t != actor) {
+                    double actorThreat = lookupThreat(actor.uid, threatCount);
+                    if (actor.atDeathsDoor && actor.guardedByUid == null) score += 1350.0 * p.survivalWeight;
+                    else score += 160.0 + actorThreat * 420.0;
+                }
+
+                if (sdef.stressHeal > 0 && t.stress > 0) {
+                    if (t.stress >= 165) score += (t.atDeathsDoor ? 980.0 : 480.0) * p.survivalWeight;
+                    else if (t.stress >= 85) score += Math.min(t.stress, sdef.stressHeal) * 8.5 * p.survivalWeight;
+                    else score += Math.min(t.stress, sdef.stressHeal) * 3.8;
+                }
+
+                if (sdef.regen != null) {
+                    score += sdef.regen[0] * sdef.regen[1] * (t.atDeathsDoor ? 16.0 : 8.5) * p.survivalWeight;
+                }
+                if (sdef.curesBleed) {
+                    int bleedSum = 0;
+                    for (ActiveDot d : t.dots) if (d.kind == Models.DOT_BLEED) bleedSum += d.amount * d.roundsLeft;
+                    score += bleedSum * 9.0;
+                }
+                if (sdef.curesBlight) {
+                    int blightSum = 0;
+                    for (ActiveDot d : t.dots) if (d.kind == Models.DOT_BLIGHT) blightSum += d.amount * d.roundsLeft;
+                    score += blightSum * 9.0;
+                }
+                if (sdef.clearsStun && t.stunned) score += 240.0;
+                if (sdef.targetStealthRounds > 0 && t.stealthRounds == 0) {
+                    score += (t.atDeathsDoor ? 420.0 : 135.0) * p.survivalWeight;
+                }
+                if (sdef.targetBuffs.length > 0) score += 48.0 * sdef.targetBuffs.length * p.defenseWeight;
+            }
+
+            if (sdef.aegisBlocks > 0) {
+                double aThreat = lookupThreat(actor.uid, threatCount);
+                score += (actor.atDeathsDoor ? 980.0 : 155.0 + aThreat * 360.0) * sdef.aegisBlocks * p.survivalWeight;
+            }
+            if (sdef.stealthRounds > 0 && actor.stealthRounds == 0) {
+                score += (actor.atDeathsDoor ? 760.0 : 185.0) * p.survivalWeight;
+            }
+            if (sdef.riposteRounds > 0 && actor.riposteRounds == 0) {
+                score += 165.0 * p.defenseWeight;
+            }
+            if (sdef.partyBuffs.length > 0) {
+                score += 44.0 * sdef.partyBuffs.length * engine.countLivingHeroes(team) * p.defenseWeight;
+            }
+            if (sdef.partyStressHeal > 0) {
+                for (UnitState ally : engine.state.teams[team]) {
+                    if (!ally.alive || ally.isCorpse) continue;
+                    if (ally.stress >= 165) score += (ally.atDeathsDoor ? 650.0 : 310.0) * p.survivalWeight;
+                    else if (ally.stress > 15) score += Math.min(ally.stress, sdef.partyStressHeal) * 3.8;
+                }
+            }
+            if (sdef.selfHealMax > 0 || sdef.selfHealPct != 0.0) {
+                double avgH = sdef.selfHealPct != 0.0 ? actor.maxHp * sdef.selfHealPct : (sdef.selfHealMin + sdef.selfHealMax) * 0.5;
+                if (actor.atDeathsDoor && actor.hp <= 0) score += 1750.0 * p.survivalWeight;
+                else score += Math.min(actor.maxHp - actor.hp, avgH) * 12.0 * p.survivalWeight;
+            }
+            if (sdef.selfBuffs.length > 0 && sdef.partyBuffs.length == 0 && sdef.aegisBlocks == 0 && sdef.stealthRounds == 0) {
+                score += (engine.state.roundNum <= 2 ? 120.0 : 65.0) * p.defenseWeight;
+            }
+            if (maxAllyThreat >= 1.0 && score < 500.0) score -= 90.0;
+        }
+        return score;
+    }
+
+    private record ScoredAction(double score, Action action) {}
+
+    private List<ScoredAction> orderedCandidates(ArenaEngine engine, int team, int width, Action ttHint, int ply) {
+        return orderedCandidates(engine, team, width, ttHint, ply, engine.getLegalActions(team));
+    }
+
+    private List<ScoredAction> orderedCandidates(ArenaEngine engine, int team, int width, Action ttHint, int ply, List<Action> legal) {
+        int n = legal.size();
+        if (n == 0) return Collections.emptyList();
+
+        int threatCount = computeAllyThreats(engine, team);
+        double maxAllyThreat = 0.0;
+        for (int i = 0; i < threatCount; i++) {
+            if (threatScratch[i] > maxAllyThreat) maxAllyThreat = threatScratch[i];
+        }
+        boolean anyAllyDd = false;
+        for (UnitState u : engine.state.teams[team]) {
+            if (u.alive && !u.isCorpse && u.atDeathsDoor && u.hp <= 0) { anyAllyDd = true; break; }
+        }
+        boolean oppHasCorpse = false;
+        for (UnitState u : engine.state.teams[1 - team]) {
+            if (u.alive && u.isCorpse) { oppHasCorpse = true; break; }
+        }
+
+        Action k0 = (ply >= 0 && ply < MAX_KILLER_PLY) ? killers[ply][0] : null;
+        Action k1 = (ply >= 0 && ply < MAX_KILLER_PLY) ? killers[ply][1] : null;
+
+        // Stable bounded insertion: preserve legal-action order for equal scores.
+        int limit = Math.min(n, width);
+        ArrayList<ScoredAction> scored = new ArrayList<>(limit);
+        for (int i = 0; i < n; i++) {
+            Action a = legal.get(i);
+            double ev = scoreActionEv(engine, a, team, threatCount, maxAllyThreat, anyAllyDd, oppHasCorpse);
+            if (ttHint != null && ttHint.equals(a)) ev += 10000.0;
+            else if (k0 != null && k0.equals(a)) ev += 120.0;
+            else if (k1 != null && k1.equals(a)) ev += 60.0;
+            int at = scored.size();
+            while (at > 0 && Double.compare(ev, scored.get(at - 1).score) > 0) at--;
+            if (at < limit) {
+                if (scored.size() == limit) scored.remove(limit - 1);
+                scored.add(at, new ScoredAction(ev, a));
+            }
+        }
+        return scored;
+    }
+
+    // ------------------------------------------------------------------ Iterative-Deepening Expectimax / Alpha-Beta
+    private double simulateExpectedValue(
+            ArenaEngine engine, Action act, int depth, int ply,
+            double alpha, double beta, int myTeam, int samples
+    ) {
+        double total = 0.0;
+        int done = 0;
+        long baseSeed = (engine.state.turnCount + 1L) * 10007L + (act.hashCode() & 0x7FFFFFFFL);
+        for (int sIdx = 0; sIdx < samples; sIdx++) {
+            if (done > 0 && checkDeadline()) break;
+            ArenaEngine sim = engine.cloneForSearch(simulationScratch);
+            sim.rng.reseed(baseSeed + sIdx * 7919L);
+            sim.step(act);
+            double val = alphabeta(sim, depth - 1, ply + 1, alpha, beta, myTeam);
+            total += val;
+            done++;
+        }
+        return total / Math.max(1, done);
+    }
+
+    private double alphabeta(ArenaEngine engine, int depth, int ply, double alpha, double beta, int myTeam) {
+        nodesVisited++;
+        if (engine.state.finished || depth <= 0 || checkDeadline()) {
+            return evaluateState(engine, myTeam);
+        }
+
+        // Transposition Table probe
+        long hash = searchStateHash(engine);
+        int idx = (int) (hash & TT_MASK);
+        Action ttHint = null;
+        if (ttGen[idx] == searchGen && ttKey[idx] == hash) {
+            ttHint = ttMove[idx];
+            if (ttDepth[idx] >= depth) {
+                ttHits++;
+                byte flag = ttFlag[idx];
+                double val = ttVal[idx];
+                if (flag == TT_EXACT) return val;
+                if (flag == TT_LOWER) {
+                    if (val > alpha) alpha = val;
+                } else if (flag == TT_UPPER) {
+                    if (val < beta) beta = val;
+                }
+                if (alpha >= beta) return val;
+            }
+        }
+
+        int curTeam = engine.state.activeTeam;
+        boolean maximizing = (curTeam == myTeam);
+        int width = (depth >= 3) ? branchWidth : (depth == 2 ? Math.max(3, branchWidth - 1) : Math.max(2, branchWidth - 2));
+        List<ScoredAction> cands = orderedCandidates(engine, curTeam, width, ttHint, ply);
+        if (cands.isEmpty()) return evaluateState(engine, myTeam);
+
+        double origAlpha = alpha;
+        double origBeta = beta;
+        Action bestMove = cands.get(0).action;
+        double best;
+
+        if (maximizing) {
+            best = -1e12;
+            for (int i = 0, cn = cands.size(); i < cn; i++) {
+                if (i > 0 && checkDeadline()) break;
+                Action act = cands.get(i).action;
+                double val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                if (val > best) {
+                    best = val;
+                    bestMove = act;
+                }
+                if (best > alpha) alpha = best;
+                if (beta <= alpha) {
+                    recordKiller(ply, act);
+                    break;
+                }
+            }
+            if (best <= -1e11) return evaluateState(engine, myTeam);
+        } else {
+            best = 1e12;
+            for (int i = 0, cn = cands.size(); i < cn; i++) {
+                if (i > 0 && checkDeadline()) break;
+                Action act = cands.get(i).action;
+                double val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                if (val < best) {
+                    best = val;
+                    bestMove = act;
+                }
+                if (best < beta) beta = best;
+                if (beta <= alpha) {
+                    recordKiller(ply, act);
+                    break;
+                }
+            }
+            if (best >= 1e11) return evaluateState(engine, myTeam);
+        }
+
+        // Store in Transposition Table if search wasn't aborted mid-node
+        if (!timeUp) {
+            byte flag;
+            if (best <= origAlpha) flag = TT_UPPER;
+            else if (best >= origBeta) flag = TT_LOWER;
+            else flag = TT_EXACT;
+            ttKey[idx] = hash;
+            ttVal[idx] = best;
+            ttDepth[idx] = (byte) depth;
+            ttFlag[idx] = flag;
+            ttGen[idx] = searchGen;
+            ttMove[idx] = bestMove;
+        }
+        return best;
+    }
+
+    private void recordKiller(int ply, Action act) {
+        if (ply < 0 || ply >= MAX_KILLER_PLY) return;
+        if (!act.equals(killers[ply][0])) {
+            killers[ply][1] = killers[ply][0];
+            killers[ply][0] = act;
+        }
+    }
+
+    /** Allows specialized evaluators to include additional state in their transposition keys. */
+    protected long searchStateHash(ArenaEngine engine) { return engine.computeStateHash(); }
+
+    @Override
+    public boolean requiresUnitObservations() { return getClass() != CircusSearchBot.class; }
+
+    @Override
+    public Action chooseAction(Observation obs, ArenaEngine engine) {
+        List<Action> legal = obs.legalActions;
+        if (legal == null || legal.isEmpty()) {
+            throw new IllegalStateException("No legal actions available");
+        }
+        if (legal.size() == 1 || engine == null) {
+            return legal.get(0);
+        }
+
+        long tStart = System.nanoTime();
+        this.deadlineNs = tStart + (long) (timeBudgetSec * 1_000_000_000.0);
+        this.timeUp = false;
+        this.nodesVisited = 0;
+        this.ttHits = 0;
+        this.searchGen++;
+        for (int i = 0; i < MAX_KILLER_PLY; i++) {
+            killers[i][0] = null;
+            killers[i][1] = null;
+        }
+
+        int myTeam = obs.viewerTeam;
+        List<ScoredAction> initialRanked = orderedCandidates(engine, myTeam, rootWidth, null, 0, legal);
+        if (initialRanked.isEmpty()) return legal.get(0);
+        if (initialRanked.size() == 1) return initialRanked.get(0).action;
+
+        // Keep mutable root order + analytical EV prior map
+        ArrayList<ScoredAction> rootMoves = new ArrayList<>(initialRanked);
+        Map<Action, Double> priorMap = new HashMap<>(rootMoves.size() * 2);
+        Map<Action, Double> lastIterScore = new HashMap<>(rootMoves.size() * 2);
+        for (ScoredAction sa : rootMoves) {
+            priorMap.put(sa.action, sa.score);
+            lastIterScore.put(sa.action, sa.score);
+        }
+
+        Action bestAction = rootMoves.get(0).action;
+        double bestOverallScore = -1e12;
+        int completedDepth = 0;
+
+        for (int depth = 1; depth <= maxDepth; depth++) {
+            if (System.nanoTime() >= deadlineNs) break;
+            Action iterBestAct = bestAction;
+            double iterBestVal = -1e12;
+            double alpha = -1e12;
+            boolean completedAll = true;
+            int rootSamples = (depth == 1) ? 5 : (depth == 2 ? 3 : (depth == 3 ? 2 : 1));
+
+            for (int idx = 0, rn = rootMoves.size(); idx < rn; idx++) {
+                if (System.nanoTime() >= deadlineNs) {
+                    completedAll = false;
+                    timeUp = true;
+                    break;
+                }
+                Action act = rootMoves.get(idx).action;
+                double priorSc = priorMap.get(act);
+                double treeVal = simulateExpectedValue(engine, act, depth, 1, alpha - priorSc * 0.35, 1e12, myTeam, rootSamples);
+                double combined = treeVal + priorSc * 0.35;
+                lastIterScore.put(act, combined);
+                if (combined > iterBestVal) {
+                    iterBestVal = combined;
+                    iterBestAct = act;
+                }
+                if (combined > alpha) {
+                    alpha = combined;
+                }
+            }
+
+            if (completedAll || iterBestVal > bestOverallScore) {
+                bestAction = iterBestAct;
+                bestOverallScore = iterBestVal;
+                if (completedAll) completedDepth = depth;
+            }
+
+            final Action pvAct = bestAction;
+            rootMoves.sort((a, b) -> {
+                if (a.action.equals(pvAct)) return -1;
+                if (b.action.equals(pvAct)) return 1;
+                return Double.compare(lastIterScore.getOrDefault(b.action, -1e12), lastIterScore.getOrDefault(a.action, -1e12));
+            });
+        }
+
+        this.lastDepthReached = completedDepth;
+        this.lastNodesVisited = nodesVisited;
+        this.lastTtHits = ttHits;
+        this.lastElapsedMs = (System.nanoTime() - tStart) / 1_000_000.0;
+        return bestAction;
+    }
+}

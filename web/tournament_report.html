@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Butcher's Circus · 锦标赛数据分析与队伍对比</title>
+  <style>
+    :root {
+      --bg: #0c0708;
+      --panel: #170e10;
+      --panel2: #1f1316;
+      --border: #4a3324;
+      --gold: #e8c374;
+      --gold-dim: #a88846;
+      --crimson: #c92a2a;
+      --crimson-bright: #ff4b4b;
+      --stress: #b78cff;
+      --green: #58d68d;
+      --blue: #5dade2;
+      --text: #eadbc8;
+      --muted: #9e8b7a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 50% 0%, #241013 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 26px;
+      background: linear-gradient(180deg, #1d0e11, #12080a);
+      border-bottom: 2px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 20px;
+      color: var(--gold);
+      letter-spacing: 0.5px;
+    }
+    .brand small { display: block; color: var(--muted); font-size: 12px; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    select, button, input[type="text"] {
+      background: #241619;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+    }
+    button {
+      cursor: pointer;
+      transition: all 0.15s;
+      font-weight: 600;
+    }
+    button:hover { border-color: var(--gold); background: #311d21; }
+    .btn-gold {
+      background: linear-gradient(180deg, #a67c33, #6d4c19);
+      border-color: var(--gold);
+      color: #fff6dc;
+    }
+    .btn-gold:hover { filter: brightness(1.15); }
+    main {
+      max-width: 1460px;
+      margin: 0 auto;
+      padding: 20px 24px 60px;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 36px 20px;
+      text-align: center;
+      background: rgba(23, 14, 16, 0.75);
+      margin-bottom: 20px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .dropzone.dragover {
+      border-color: var(--gold);
+      background: rgba(90, 52, 22, 0.25);
+    }
+    .hidden { display: none !important; }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .kpi {
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .kpi .label { font-size: 12px; color: var(--muted); }
+    .kpi .val { font-size: 26px; font-weight: 800; color: var(--gold); margin-top: 4px; }
+    .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .card {
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      color: var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid rgba(232, 195, 116, 0.16);
+      padding-bottom: 8px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
+      gap: 18px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    th {
+      color: var(--gold);
+      font-weight: 700;
+      background: rgba(0, 0, 0, 0.25);
+      position: sticky;
+      top: 0;
+    }
+    tr:hover td { background: rgba(232, 195, 116, 0.05); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #2b1d20;
+      border: 1px solid var(--border);
+      color: #d9c4a9;
+    }
+    .win-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .win-bar {
+      width: 84px;
+      height: 8px;
+      background: #2d1b1e;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .win-bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, #b83227, var(--gold));
+    }
+    .heatmap-cell {
+      text-align: center;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      border-radius: 4px;
+    }
+    .compare-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 220px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .team-pill-box {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .hero-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .hero-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #241619;
+      border: 1px solid #4a3324;
+      border-radius: 5px;
+      padding: 3px 7px;
+      font-size: 12px;
+    }
+    .hero-chip img {
+      width: 22px;
+      height: 22px;
+      border-radius: 3px;
+      object-fit: cover;
+    }
+    .vs-metric-row {
+      display: grid;
+      grid-template-columns: 1fr 150px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin: 7px 0;
+      font-size: 13px;
+    }
+    .bar-track {
+      height: 14px;
+      background: #26181a;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+    .bar-track.left { justify-content: flex-end; }
+    .bar-fill-a { background: linear-gradient(90deg, #d35400, #f5b041); height: 100%; }
+    .bar-fill-b { background: linear-gradient(90deg, #2e86c1, #76d7c4); height: 100%; }
+    .table-scroll {
+      max-height: 460px;
+      overflow: auto;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+    }
+    canvas.chart {
+      width: 100%;
+      height: 300px;
+      display: block;
+    }
+    .winner-tag { color: var(--green); font-weight: 700; }
+    .dmg-tag { color: #ff7b6b; }
+    .stress-tag { color: var(--stress); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div>
+        <h1>⚔ Butcher's Circus · 锦标赛数据可视化分析</h1>
+        <small id="report-meta">导入任意锦标赛 JSON 文件，或从服务器历史记录加载完整对战数据</small>
+      </div>
+    </div>
+    <div class="toolbar">
+      <select id="saved-select" title="服务器已保存的锦标赛报告">
+        <option value="">-- 选择历史锦标赛报告 --</option>
+      </select>
+      <label for="file-input"><button type="button" class="btn-gold" onclick="document.getElementById('file-input').click()">📂 导入 JSON 文件</button></label>
+      <input id="file-input" type="file" accept=".json,application/json" class="hidden" />
+      <button id="btn-download" class="hidden">💾 导出当前 JSON</button>
+      <button onclick="window.location.href='/'">🏰 返回角斗场大厅</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="dropzone" class="dropzone">
+      <div style="font-size:32px;margin-bottom:8px;">📊</div>
+      <div style="font-size:16px;color:var(--gold);font-weight:700;">将锦标赛 JSON 文件拖放到此处，或点击右上角「导入 JSON 文件」</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px;">
+        支持加载 <code>tournaments/tournament_*.json</code>，完整展示每场回合数、胜者、伤压总量、首个死门/折磨/心梗/死亡回合及队伍对比
+      </div>
+    </div>
+
+    <div id="dashboard" class="hidden">
+      <!-- KPI Overview -->
+      <section id="kpi-grid" class="kpi-grid"></section>
+
+      <!-- Leaderboard -->
+      <section class="card">
+        <h2>
+          <span>🏆 队伍 ELO 排行榜与综合表现</span>
+          <span id="meta-speed" style="font-size:12px;color:var(--muted);font-weight:400;"></span>
+        </h2>
+        <div class="table-scroll">
+          <table id="standings-table"></table>
+        </div>
+      </section>
+
+      <!-- Team Comparison -->
+      <section class="card">
+        <h2>⚖ 队伍深度对比（Team A vs Team B）</h2>
+        <div class="compare-controls">
+          <label>队伍 A：</label>
+          <select id="cmp-team-a"></select>
+          <span style="color:var(--gold);font-weight:800;">VS</span>
+          <label>队伍 B：</label>
+          <select id="cmp-team-b"></select>
+          <span id="cmp-h2h-summary" class="badge" style="font-size:13px;padding:5px 10px;"></span>
+        </div>
+        <div id="compare-body"></div>
+      </section>
+
+      <!-- Heatmap + Output Chart -->
+      <div class="grid-2">
+        <section class="card">
+          <h2>🔥 两两交手胜率热力矩阵（行 vs 列）</h2>
+          <div class="table-scroll">
+            <table id="heatmap-table"></table>
+          </div>
+        </section>
+        <section class="card">
+          <h2>💥 场均伤害总量 vs 压力总量对比</h2>
+          <canvas id="chart-dmg-stress" class="chart"></canvas>
+        </section>
+      </div>
+
+      <!-- Tempo Milestones + Rounds Histogram -->
+      <div class="grid-2">
+        <section class="card">
+          <h2>⏱ 队伍进攻节奏对比（场均造成首个死门 / 折磨 / 心梗 / 死亡回合）</h2>
+          <canvas id="chart-milestones" class="chart"></canvas>
+        </section>
+        <section class="card">
+          <h2>📈 对局回合数分布直方图</h2>
+          <canvas id="chart-rounds" class="chart"></canvas>
+        </section>
+      </div>
+
+      <!-- Full Per-Match Table -->
+      <section class="card">
+        <h2>
+          <span>📜 全部单场对局明细</span>
+          <div style="display:flex;gap:8px;align-items:center;font-weight:400;">
+            <select id="filter-team"><option value="">全部队伍</option></select>
+            <input id="filter-search" type="text" placeholder="搜索队伍/种子/胜因..." />
+          </div>
+        </h2>
+        <div class="table-scroll">
+          <table id="matches-table"></table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let currentData = null;
+
+    const $ = (id) => document.getElementById(id);
+    const fmt = (v, digits = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(digits);
+    const fmtInt = (v) => (v === null || v === undefined) ? "—" : String(v);
+    const shortClass = (cls) => (cls || "").split(".").pop() || "—";
+
+    async function init() {
+      // Load saved list from server if available
+      try {
+        const res = await fetch("/api/tournaments");
+        if (res.ok) {
+          const data = await res.json();
+          const sel = $("saved-select");
+          for (const item of data.tournaments || []) {
+            const opt = document.createElement("option");
+            opt.value = item.filename;
+            opt.textContent = `${item.filename} (${item.total_matches}场 · 均${item.avg_rounds}回合)`;
+            sel.appendChild(opt);
+          }
+        }
+      } catch {}
+
+      const params = new URLSearchParams(window.location.search);
+      const file = params.get("file");
+      if (file) {
+        $("saved-select").value = file;
+        await loadFromServer(file);
+      }
+    }
+
+    async function loadFromServer(filename) {
+      if (!filename) return;
+      try {
+        const res = await fetch(`/api/tournaments/${encodeURIComponent(filename)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        renderReport(json, filename);
+      } catch (e) {
+        alert("加载报告失败: " + e.message);
+      }
+    }
+
+    $("saved-select").addEventListener("change", (e) => {
+      if (e.target.value) loadFromServer(e.target.value);
+    });
+
+    $("file-input").addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) readLocalFile(f);
+    });
+
+    const dz = $("dropzone");
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.classList.remove("dragover");
+      const f = e.dataTransfer?.files?.[0];
+      if (f) readLocalFile(f);
+    });
+
+    function readLocalFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const json = JSON.parse(reader.result);
+          renderReport(json, file.name);
+        } catch (err) {
+          alert("JSON 解析失败: " + err.message);
+        }
+      };
+      reader.readAsText(file, "utf-8");
+    }
+
+    $("btn-download").addEventListener("click", () => {
+      if (!currentData) return;
+      const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentData.tournament_id || "tournament_report"}.json`;
+      a.click();
+    });
+
+    function computeStatsFromMatches(data) {
+      const matches = data.matches || [];
+      const avgOf = (arr) => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+      const valid = (key) => matches.map((m) => m[key]).filter((v) => v !== null && v !== undefined);
+      return {
+        avgFirstDd: avgOf(valid("first_deaths_door_round")),
+        avgFirstAff: avgOf(valid("first_affliction_round")),
+        avgFirstHa: avgOf(valid("first_heart_attack_round")),
+        avgFirstDeath: avgOf(valid("first_death_round")),
+        affRate: matches.length ? (valid("first_affliction_round").length / matches.length) * 100 : 0,
+        haRate: matches.length ? (valid("first_heart_attack_round").length / matches.length) * 100 : 0,
+      };
+    }
+
+    function renderReport(data, sourceName) {
+      currentData = data;
+      $("dropzone").classList.add("hidden");
+      $("dashboard").classList.remove("hidden");
+      $("btn-download").classList.remove("hidden");
+
+      const matches = data.matches || [];
+      const winrates = data.winrates || {};
+      const teamNames = Object.keys(winrates);
+      const ms = computeStatsFromMatches(data);
+
+      $("report-meta").textContent = `数据源: ${sourceName} · ID: ${data.tournament_id || "—"} · 时间: ${data.created_at || "—"}`;
+      $("meta-speed").textContent = `耗时 ${data.elapsed_sec ?? "—"}s · ${data.matches_per_sec ?? "—"} 场/秒`;
+
+      // 1. KPI Cards
+      const kpis = [
+        ["总对局数", data.total_matches ?? matches.length, `${teamNames.length} 支队伍循环对抗`],
+        ["平均回合数", fmt(data.avg_rounds, 2), `最短 ${Math.min(...matches.map((m) => m.rounds || 0), 999)} / 最长 ${Math.max(...matches.map((m) => m.rounds || 0), 0)}`],
+        ["致死 vs 心梗击杀", `${data.deathblow_kills ?? 0} / ${data.heart_attack_kills ?? 0}`, "Deathblow / Heart Attack"],
+        ["首个死门平均回合", fmt(ms.avgFirstDd, 2), "First Death's Door"],
+        ["首个折磨平均回合", fmt(ms.avgFirstAff, 2), `触发率 ${fmt(ms.affRate, 1)}%`],
+        ["首个心梗平均回合", fmt(ms.avgFirstHa, 2), `触发率 ${fmt(ms.haRate, 1)}%`],
+        ["首个死亡平均回合", fmt(ms.avgFirstDeath, 2), "First Death Round"],
+      ];
+      $("kpi-grid").innerHTML = kpis.map(([l, v, s]) =>
+        `<div class="kpi"><div class="label">${l}</div><div class="val">${v}</div><div class="sub">${s}</div></div>`
+      ).join("");
+
+      // 2. Standings Table
+      let stHtml = `<thead><tr>
+        <th>#</th><th>队伍</th><th>Bot 程序类</th>
+        <th class="num">ELO</th><th class="num">胜/负</th><th>胜率</th>
+        <th class="num">场均伤害</th><th class="num">场均压力</th>
+        <th class="num">均回合</th><th class="num">均存活</th>
+        <th class="num">首死门</th><th class="num">首折磨</th><th class="num">首心梗</th><th class="num">首死亡</th>
+      </tr></thead><tbody>`;
+      teamNames.forEach((name, idx) => {
+        const st = winrates[name];
+        stHtml += `<tr>
+          <td><b>${idx + 1}</b></td>
+          <td><b>${name}</b></td>
+          <td><span class="badge" title="${st.bot_class || ""}">${shortClass(st.bot_class)}</span></td>
+          <td class="num" style="color:var(--gold);font-weight:700;">${fmt(st.elo, 1)}</td>
+          <td class="num">${st.wins}W / ${st.losses}L</td>
+          <td><div class="win-bar-wrap"><div class="win-bar"><div style="width:${Math.min(100, st.winrate_pct || 0)}%"></div></div><span>${fmt(st.winrate_pct, 1)}%</span></div></td>
+          <td class="num dmg-tag">${fmt(st.avg_damage_dealt, 1)}</td>
+          <td class="num stress-tag">${fmt(st.avg_stress_dealt, 1)}</td>
+          <td class="num">${fmt(st.avg_rounds, 2)}</td>
+          <td class="num">${fmt(st.avg_survivors, 2)}</td>
+          <td class="num">${fmt(st.avg_inflict_first_dd_round, 2)}</td>
+          <td class="num">${fmt(st.avg_inflict_first_affliction_round, 2)}</td>
+          <td class="num">${fmt(st.avg_inflict_first_heart_attack_round, 2)}</td>
+          <td class="num">${fmt(st.avg_inflict_first_death_round, 2)}</td>
+        </tr>`;
+      });
+      stHtml += "</tbody>";
+      $("standings-table").innerHTML = stHtml;
+
+      // 3. Team Comparison selectors
+      const selA = $("cmp-team-a"), selB = $("cmp-team-b"), fTeam = $("filter-team");
+      selA.innerHTML = ""; selB.innerHTML = "";
+      fTeam.innerHTML = `<option value="">全部队伍</option>`;
+      for (const n of teamNames) {
+        selA.add(new Option(n, n));
+        selB.add(new Option(n, n));
+        fTeam.add(new Option(n, n));
+      }
+      if (teamNames.length >= 2) {
+        selA.value = teamNames[0];
+        selB.value = teamNames[1];
+      }
+      selA.onchange = () => renderComparison();
+      selB.onchange = () => renderComparison();
+      renderComparison();
+
+      // 4. Heatmap
+      renderHeatmap(teamNames, data.head_to_head || {});
+
+      // 5. Charts
+      drawDmgStressChart(teamNames, winrates);
+      drawMilestonesChart(teamNames, winrates);
+      drawRoundsHistogram(matches);
+
+      // 6. Matches Table
+      $("filter-team").onchange = () => renderMatchesTable();
+      $("filter-search").oninput = () => renderMatchesTable();
+      renderMatchesTable();
+    }
+
+    function renderComparison() {
+      const a = $("cmp-team-a").value;
+      const b = $("cmp-team-b").value;
+      if (!a || !b || !currentData) return;
+      const sa = currentData.winrates[a] || {};
+      const sb = currentData.winrates[b] || {};
+      const matches = (currentData.matches || []).filter(
+        (m) => (m.team0_name === a && m.team1_name === b) || (m.team0_name === b && m.team1_name === a)
+      );
+      let aWins = 0, bWins = 0, aDmg = 0, bDmg = 0, aStr = 0, bStr = 0;
+      for (const m of matches) {
+        if (m.winner_name === a) aWins++;
+        else if (m.winner_name === b) bWins++;
+        if (m.team0_name === a) {
+          aDmg += m.team0_total_damage || 0; bDmg += m.team1_total_damage || 0;
+          aStr += m.team0_total_stress || 0; bStr += m.team1_total_stress || 0;
+        } else {
+          aDmg += m.team1_total_damage || 0; bDmg += m.team0_total_damage || 0;
+          aStr += m.team1_total_stress || 0; bStr += m.team0_total_stress || 0;
+        }
+      }
+      const n = Math.max(1, matches.length);
+      $("cmp-h2h-summary").textContent = matches.length
+        ? `直接交锋 ${matches.length} 场：${a} ${aWins} 胜 - ${bWins} 胜 ${b} (${fmt((aWins / n) * 100, 1)}%)`
+        : "两队暂无直接交锋记录";
+
+      const renderTeamBox = (name, st, color) => {
+        const heroes = (st.heroes || []).map((hid) =>
+          `<span class="hero-chip"><img src="/api/portrait/${hid}/A" onerror="this.style.display='none'" />${hid}</span>`
+        ).join("");
+        return `<div class="team-pill-box">
+          <div style="font-size:16px;font-weight:800;color:${color}">${name}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;">Bot 类：<code>${st.bot_class || "—"}</code> · ELO <b>${fmt(st.elo, 1)}</b></div>
+          <div class="hero-chips">${heroes || '<span class="muted">无阵容信息</span>'}</div>
+        </div>`;
+      };
+
+      const rows = [
+        ["总胜率 (%)", sa.winrate_pct || 0, sb.winrate_pct || 0, 100, "%"],
+        ["交锋场均伤害", matches.length ? aDmg / n : (sa.avg_damage_dealt || 0), matches.length ? bDmg / n : (sb.avg_damage_dealt || 0), 0, ""],
+        ["总场均伤害", sa.avg_damage_dealt || 0, sb.avg_damage_dealt || 0, 0, ""],
+        ["总场均压力", sa.avg_stress_dealt || 0, sb.avg_stress_dealt || 0, 0, ""],
+        ["场均承伤", sa.avg_damage_taken || 0, sb.avg_damage_taken || 0, 0, ""],
+        ["场均存活英雄", sa.avg_survivors || 0, sb.avg_survivors || 0, 4, ""],
+        ["均造成首死门回合", sa.avg_inflict_first_dd_round || 0, sb.avg_inflict_first_dd_round || 0, 0, "R"],
+        ["均造成首折磨回合", sa.avg_inflict_first_affliction_round || 0, sb.avg_inflict_first_affliction_round || 0, 0, "R"],
+        ["均造成首心梗回合", sa.avg_inflict_first_heart_attack_round || 0, sb.avg_inflict_first_heart_attack_round || 0, 0, "R"],
+        ["均造成首死亡回合", sa.avg_inflict_first_death_round || 0, sb.avg_inflict_first_death_round || 0, 0, "R"],
+      ];
+
+      const barsHtml = rows.map(([lbl, va, vb, cap, unit]) => {
+        const mx = cap > 0 ? cap : Math.max(1, va, vb);
+        const pa = Math.min(100, (va / mx) * 100);
+        const pb = Math.min(100, (vb / mx) * 100);
+        return `<div class="vs-metric-row">
+          <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+            <b>${va > 0 ? fmt(va, 1) + unit : "—"}</b>
+            <div class="bar-track left" style="flex:1;"><div class="bar-fill-a" style="width:${pa}%"></div></div>
+          </div>
+          <div style="text-align:center;color:var(--muted);font-size:12px;">${lbl}</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="bar-track" style="flex:1;"><div class="bar-fill-b" style="width:${pb}%"></div></div>
+            <b>${vb > 0 ? fmt(vb, 1) + unit : "—"}</b>
+          </div>
+        </div>`;
+      }).join("");
+
+      $("compare-body").innerHTML = `
+        <div class="compare-grid" style="margin-bottom:14px;">
+          ${renderTeamBox(a, sa, "#f5b041")}
+          <div style="text-align:center;padding-top:16px;">
+            <div style="font-size:28px;font-weight:900;color:var(--gold);">${aWins} : ${bWins}</div>
+            <div style="font-size:12px;color:var(--muted);">直接交锋比分</div>
+          </div>
+          ${renderTeamBox(b, sb, "#76d7c4")}
+        </div>
+        <div>${barsHtml}</div>
+      `;
+    }
+
+    function renderHeatmap(names, h2h) {
+      let html = `<thead><tr><th>队伍</th>${names.map((n) => `<th style="text-align:center;">${n}</th>`).join("")}</tr></thead><tbody>`;
+      for (const r of names) {
+        html += `<tr><td><b>${r}</b></td>`;
+        for (const c of names) {
+          if (r === c) {
+            html += `<td class="heatmap-cell" style="background:#1c1214;color:#555;">—</td>`;
+            continue;
+          }
+          const w = (h2h[r] && h2h[r][c]) || 0;
+          const l = (h2h[c] && h2h[c][r]) || 0;
+          const tot = w + l;
+          if (!tot) {
+            html += `<td class="heatmap-cell" style="color:#666;">0-0</td>`;
+          } else {
+            const pct = (w / tot) * 100;
+            const bg = pct >= 60 ? "rgba(46, 150, 90, 0.45)" : pct <= 40 ? "rgba(185, 42, 42, 0.45)" : "rgba(180, 140, 50, 0.30)";
+            html += `<td class="heatmap-cell" style="background:${bg}">${Math.round(pct)}%<br><span style="font-size:11px;font-weight:400;color:#ddd;">${w}-${l}</span></td>`;
+          }
+        }
+        html += "</tr>";
+      }
+      html += "</tbody>";
+      $("heatmap-table").innerHTML = html;
+    }
+
+    function prepCanvas(canvas) {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const w = canvas.clientWidth || 560;
+      const h = canvas.clientHeight || 300;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
+      return { ctx, w, h };
+    }
+
+    function drawDmgStressChart(names, winrates) {
+      const { ctx, w, h } = prepCanvas($("chart-dmg-stress"));
+      const pad = { l: 48, r: 18, t: 30, b: 64 };
+      const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+      const dmgs = names.map((n) => winrates[n].avg_damage_dealt || 0);
+      const strs = names.map((n) => winrates[n].avg_stress_dealt || 0);
+      const maxVal = Math.max(50, ...dmgs, ...strs) * 1.15;
+
+      // Grid
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.fillStyle = "#9e8b7a";
+      ctx.font = "11px sans-serif";
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + ph - (ph * i) / 4;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.fillText(Math.round((maxVal * i) / 4), pad.l - 6, y + 4);
+      }
+
+      // Legend
+      ctx.fillStyle = "#e74c3c"; ctx.fillRect(pad.l, 8, 12, 10);
+      ctx.fillStyle = "#eadbc8"; ctx.textAlign = "left"; ctx.fillText("场均伤害总量", pad.l + 16, 17);
+      ctx.fillStyle = "#b78cff"; ctx.fillRect(pad.l + 110, 8, 12, 10);
+      ctx.fillStyle = "#eadbc8"; ctx.fillText("场均压力总量", pad.l + 126, 17);
+
+      const grpW = pw / Math.max(1, names.length);
+      const barW = Math.min(28, grpW * 0.34);
+      names.forEach((n, i) => {
+        const cx = pad.l + grpW * (i + 0.5);
+        const h1 = (dmgs[i] / maxVal) * ph;
+        const h2 = (strs[i] / maxVal) * ph;
+        ctx.fillStyle = "#e74c3c";
+        ctx.fillRect(cx - barW - 2, pad.t + ph - h1, barW, h1);
+        ctx.fillStyle = "#b78cff";
+        ctx.fillRect(cx + 2, pad.t + ph - h2, barW, h2);
+
+        ctx.fillStyle = "#eadbc8";
+        ctx.textAlign = "center";
+        ctx.font = "11px sans-serif";
+        ctx.fillText(Math.round(dmgs[i]), cx - barW * 0.5 - 2, pad.t + ph - h1 - 4);
+        ctx.fillText(Math.round(strs[i]), cx + barW * 0.5 + 2, pad.t + ph - h2 - 4);
+
+        ctx.save();
+        ctx.translate(cx, pad.t + ph + 14);
+        ctx.rotate(-0.22);
+        ctx.fillStyle = "#d8c3a8";
+        ctx.fillText(n.slice(0, 14), 0, 0);
+        ctx.restore();
+      });
+    }
+
+    function drawMilestonesChart(names, winrates) {
+      const { ctx, w, h } = prepCanvas($("chart-milestones"));
+      const pad = { l: 42, r: 16, t: 32, b: 64 };
+      const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+      const series = [
+        ["首死门", "avg_inflict_first_dd_round", "#ff6b6b"],
+        ["首折磨", "avg_inflict_first_affliction_round", "#c084fc"],
+        ["首心梗", "avg_inflict_first_heart_attack_round", "#f59e0b"],
+        ["首死亡", "avg_inflict_first_death_round", "#38bdf8"],
+      ];
+      let maxR = 6;
+      for (const n of names) {
+        for (const [, k] of series) maxR = Math.max(maxR, winrates[n][k] || 0);
+      }
+      maxR = Math.ceil(maxR * 1.15);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.fillStyle = "#9e8b7a";
+      ctx.font = "11px sans-serif";
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + ph - (ph * i) / 4;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.fillText("R" + Math.round((maxR * i) / 4), pad.l - 6, y + 4);
+      }
+
+      series.forEach(([lbl, , col], si) => {
+        const lx = pad.l + si * 78;
+        ctx.fillStyle = col; ctx.fillRect(lx, 8, 10, 10);
+        ctx.fillStyle = "#eadbc8"; ctx.textAlign = "left"; ctx.fillText(lbl, lx + 14, 17);
+      });
+
+      const grpW = pw / Math.max(1, names.length);
+      const bw = Math.min(16, (grpW * 0.78) / 4);
+      names.forEach((n, i) => {
+        const startX = pad.l + grpW * (i + 0.5) - bw * 2;
+        series.forEach(([, k, col], si) => {
+          const val = winrates[n][k] || 0;
+          if (val > 0) {
+            const bh = (val / maxR) * ph;
+            ctx.fillStyle = col;
+            ctx.fillRect(startX + si * bw, pad.t + ph - bh, bw - 2, bh);
+          }
+        });
+        ctx.save();
+        ctx.translate(pad.l + grpW * (i + 0.5), pad.t + ph + 14);
+        ctx.rotate(-0.22);
+        ctx.fillStyle = "#d8c3a8";
+        ctx.textAlign = "center";
+        ctx.fillText(n.slice(0, 14), 0, 0);
+        ctx.restore();
+      });
+    }
+
+    function drawRoundsHistogram(matches) {
+      const { ctx, w, h } = prepCanvas($("chart-rounds"));
+      const pad = { l: 42, r: 16, t: 24, b: 42 };
+      const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+      const counts = new Map();
+      for (const m of matches) {
+        const r = m.rounds || 1;
+        counts.set(r, (counts.get(r) || 0) + 1);
+      }
+      const keys = Array.from(counts.keys()).sort((a, b) => a - b);
+      if (!keys.length) return;
+      const maxC = Math.max(1, ...counts.values());
+
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.fillStyle = "#9e8b7a";
+      ctx.font = "11px sans-serif";
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + ph - (ph * i) / 4;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.fillText(Math.round((maxC * i) / 4), pad.l - 6, y + 4);
+      }
+
+      const step = pw / keys.length;
+      const bw = Math.max(8, Math.min(34, step * 0.72));
+      keys.forEach((r, idx) => {
+        const c = counts.get(r);
+        const bh = (c / maxC) * ph;
+        const cx = pad.l + step * (idx + 0.5);
+        const grad = ctx.createLinearGradient(0, pad.t + ph - bh, 0, pad.t + ph);
+        grad.addColorStop(0, "#e8c374");
+        grad.addColorStop(1, "#8f3a1f");
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - bw * 0.5, pad.t + ph - bh, bw, bh);
+        ctx.fillStyle = "#eadbc8";
+        ctx.textAlign = "center";
+        ctx.fillText(c, cx, pad.t + ph - bh - 4);
+        ctx.fillStyle = "#9e8b7a";
+        ctx.fillText("R" + r, cx, pad.t + ph + 16);
+      });
+    }
+
+    function renderMatchesTable() {
+      if (!currentData) return;
+      const teamFilter = $("filter-team").value;
+      const q = ($("filter-search").value || "").trim().toLowerCase();
+      const rows = (currentData.matches || []).filter((m) => {
+        if (teamFilter && m.team0_name !== teamFilter && m.team1_name !== teamFilter) return false;
+        if (q) {
+          const hay = `${m.team0_name} ${m.team1_name} ${m.winner_name} ${m.seed} ${m.win_reason}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      let html = `<thead><tr>
+        <th>#</th><th>双方队伍</th><th>胜者</th><th class="num">回合</th>
+        <th class="num">伤害总量 (P1/P2)</th><th class="num">压力总量 (P1/P2)</th>
+        <th class="num">首死门</th><th class="num">首折磨</th><th class="num">首心梗</th><th class="num">首死亡</th>
+        <th>结束原因</th>
+      </tr></thead><tbody>`;
+      for (const m of rows) {
+        html += `<tr>
+          <td>${m.match_index + 1}</td>
+          <td><b>${m.team0_name}</b> <span style="color:var(--muted)">vs</span> <b>${m.team1_name}</b></td>
+          <td class="winner-tag">${m.winner_name}</td>
+          <td class="num">${m.rounds}</td>
+          <td class="num dmg-tag">${m.team0_total_damage} / ${m.team1_total_damage}</td>
+          <td class="num stress-tag">${m.team0_total_stress} / ${m.team1_total_stress}</td>
+          <td class="num">${m.first_deaths_door_round ? "R" + m.first_deaths_door_round : "—"}</td>
+          <td class="num">${m.first_affliction_round ? "R" + m.first_affliction_round : "—"}</td>
+          <td class="num">${m.first_heart_attack_round ? "R" + m.first_heart_attack_round : "—"}</td>
+          <td class="num">${m.first_death_round ? "R" + m.first_death_round : "—"}</td>
+          <td><span class="badge">${m.win_reason}</span></td>
+        </tr>`;
+      }
+      html += "</tbody>";
+      $("matches-table").innerHTML = html;
+    }
+
+    init();
+  </script>
+</body>
+</html>
