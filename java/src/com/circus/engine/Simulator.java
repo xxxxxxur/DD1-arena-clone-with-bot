@@ -27,7 +27,51 @@ public final class Simulator {
 
     private Simulator() {}
 
-    public record BotSpec(String type, String preset) {}
+    public record BotSpec(String type, String preset, String botClass) {
+        public BotSpec(String type, String preset) {
+            this(type, preset, null);
+        }
+
+        /**
+         * Parse a spec string supporting:
+         * - {@code teamId}
+         * - {@code teamId@botClass}
+         * - {@code botType:presetId}
+         * - {@code teamId:presetId@botClass}
+         */
+        public static BotSpec parse(String raw) {
+            String s = raw == null ? "" : raw.trim();
+            String botCls = null;
+            int at = s.indexOf('@');
+            if (at >= 0) {
+                String after = s.substring(at + 1).trim();
+                botCls = after.isEmpty() ? null : after;
+                s = s.substring(0, at).trim();
+            }
+            String preset = null;
+            int colon = s.indexOf(':');
+            if (colon >= 0) {
+                String pr = s.substring(colon + 1).trim();
+                preset = pr.isEmpty() ? null : pr;
+                s = s.substring(0, colon).trim();
+            }
+            return new BotSpec(s, preset, botCls);
+        }
+
+        public String displayLabel() {
+            StringBuilder sb = new StringBuilder(type);
+            if (preset != null && !preset.isEmpty()) {
+                sb.append('(').append(preset).append(')');
+            }
+            if (botClass != null && !botClass.isEmpty()) {
+                String shortCls = botClass.contains(".")
+                        ? botClass.substring(botClass.lastIndexOf('.') + 1)
+                        : botClass;
+                sb.append('@').append(shortCls);
+            }
+            return sb.toString();
+        }
+    }
 
     public record MatchResult(
             long seed,
@@ -407,7 +451,15 @@ public final class Simulator {
         Instant now = Instant.now();
         String tourId = "tournament_" + FILE_TS.format(now) + "_" + baseSeed;
 
-        record Job(String b0Type, String b1Type, String p0, String p1, long seed, boolean rec) {}
+        record Job(BotSpec a, BotSpec b, String labelA, String labelB, long seed, boolean rec) {}
+        List<String> labels = new ArrayList<>(botSpecs.size());
+        Map<String, Integer> labelCounts = new HashMap<>();
+        for (BotSpec sp : botSpecs) {
+            String base = sp.displayLabel();
+            int c = labelCounts.merge(base, 1, Integer::sum);
+            labels.add(c == 1 ? base : (base + "#" + c));
+        }
+
         List<Job> jobs = new ArrayList<>();
         long seedCursor = baseSeed;
         int replayBudget = saveReplays;
@@ -416,12 +468,16 @@ public final class Simulator {
             for (int j = i + 1; j < botSpecs.size(); j++) {
                 BotSpec s0 = botSpecs.get(i);
                 BotSpec s1 = botSpecs.get(j);
+                String l0 = labels.get(i);
+                String l1 = labels.get(j);
                 for (int m = 0; m < matchesPerPair; m++) {
                     BotSpec a = (m % 2 == 0) ? s0 : s1;
                     BotSpec b = (m % 2 == 0) ? s1 : s0;
+                    String la = (m % 2 == 0) ? l0 : l1;
+                    String lb = (m % 2 == 0) ? l1 : l0;
                     boolean rec = replayBudget > 0;
                     if (rec) replayBudget--;
-                    jobs.add(new Job(a.type, b.type, a.preset, b.preset, seedCursor++, rec));
+                    jobs.add(new Job(a, b, la, lb, seedCursor++, rec));
                 }
             }
         }
@@ -433,7 +489,7 @@ public final class Simulator {
             try {
                 List<Future<MatchResult>> futures = new ArrayList<>(jobs.size());
                 for (Job job : jobs) {
-                    futures.add(pool.submit(() -> runJob(job.b0Type, job.b1Type, job.p0, job.p1, job.seed, maxRounds, job.rec, timeBudgetSec)));
+                    futures.add(pool.submit(() -> runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec)));
                 }
                 for (Future<MatchResult> f : futures) {
                     results.add(f.get());
@@ -445,7 +501,7 @@ public final class Simulator {
             }
         } else {
             for (Job job : jobs) {
-                results.add(runJob(job.b0Type, job.b1Type, job.p0, job.p1, job.seed, maxRounds, job.rec, timeBudgetSec));
+                results.add(runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec));
             }
         }
 
@@ -648,14 +704,12 @@ public final class Simulator {
     }
 
     private static MatchResult runJob(
-            String b0Type, String b1Type, String p0, String p1,
+            BotSpec a, BotSpec b, String n0, String n1,
             long seed, int maxRounds, boolean rec, Double timeBudgetSec
     ) {
-        String n0 = b0Type + (p0 != null && !p0.isEmpty() ? "(" + p0 + ")" : "");
-        String n1 = b1Type + (p1 != null && !p1.isEmpty() ? "(" + p1 + ")" : "");
-        try (Bot b0 = BotRegistry.create(b0Type, n0, p0, seed, timeBudgetSec);
-             Bot b1 = BotRegistry.create(b1Type, n1, p1, seed + 99991L, timeBudgetSec)) {
-            return runMatch(b0, b1, b0Type, b1Type, null, null, seed, maxRounds, rec);
+        try (Bot b0 = BotRegistry.create(a.type, n0, a.preset, seed, timeBudgetSec, a.botClass);
+             Bot b1 = BotRegistry.create(b.type, n1, b.preset, seed + 99991L, timeBudgetSec, b.botClass)) {
+            return runMatch(b0, b1, a.type, b.type, null, null, seed, maxRounds, rec);
         }
     }
 

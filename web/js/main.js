@@ -159,10 +159,39 @@ const CLASSIC_TOURNAMENT_TEAMS = [
   "shuffle_kill",
 ];
 
+function getTournamentBotOptions() {
+  const fromServer = appState.bootstrap?.bot_classes;
+  if (Array.isArray(fromServer) && fromServer.length) return fromServer;
+  return [
+    { id: "unit_neural_search", label: "UnitNeuralSearchBot (单位级神经搜索)" },
+    { id: "neural_search", label: "NeuralSearchBot (轻量神经搜索)" },
+    { id: "search", label: "CircusSearchBot (时间展开搜索)" },
+    { id: "fortress", label: "FortressBot (铁壁防守搜索)" },
+    { id: "tactical", label: "TacticalBot (战术启发)" },
+    { id: "stress", label: "StressSpecialistBot (压力专精)" },
+    { id: "random", label: "RandomBot (随机)" },
+  ];
+}
+
 function getSelectedTournamentTeams() {
   const container = $("lab-team-list");
   if (!container) return [];
   return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
+}
+
+function getSelectedTournamentSpecs() {
+  const container = $("lab-team-list");
+  if (!container) return [];
+  const specs = [];
+  for (const row of container.querySelectorAll(".lab-team-chip")) {
+    const cb = row.querySelector('input[type="checkbox"]');
+    if (!cb?.checked) continue;
+    const sel = row.querySelector(".lab-team-bot");
+    const spec = { type: cb.value };
+    if (sel?.value) spec.bot = sel.value;
+    specs.push(spec);
+  }
+  return specs;
 }
 
 function updateTournamentSelectionSummary() {
@@ -171,7 +200,8 @@ function updateTournamentSelectionSummary() {
   if (!summaryEl || !container) return;
   const all = container.querySelectorAll('input[type="checkbox"]').length;
   const selected = getSelectedTournamentTeams().length;
-  const m = Math.max(2, Math.min(100, parseInt($("lab-matches")?.value, 10) || 10));
+  const mRaw = parseInt($("lab-matches")?.value, 10);
+  const m = Number.isFinite(mRaw) ? Math.max(1, Math.min(1000, mRaw)) : 30;
   const pairs = selected >= 2 ? (selected * (selected - 1)) / 2 : 0;
   const totalMatches = pairs * m;
   summaryEl.textContent =
@@ -183,36 +213,88 @@ function updateTournamentSelectionSummary() {
 function populateTournamentTeamPicker(preserveChecked = false) {
   const container = $("lab-team-list");
   if (!container) return;
+
+  const workersInput = $("lab-workers");
+  if (workersInput && !workersInput.dataset.initialized) {
+    const cores = appState.bootstrap?.cpu_cores || navigator.hardwareConcurrency || 4;
+    workersInput.value = String(Math.max(1, cores));
+    workersInput.dataset.initialized = "1";
+  }
+
   const prevChecked = preserveChecked ? new Set(getSelectedTournamentTeams()) : null;
+  const prevBots = new Map();
+  if (preserveChecked) {
+    for (const row of container.querySelectorAll(".lab-team-chip")) {
+      const cb = row.querySelector('input[type="checkbox"]');
+      const sel = row.querySelector(".lab-team-bot");
+      if (cb?.value && sel) prevBots.set(cb.value, sel.value);
+    }
+  }
+
+  const botOpts = getTournamentBotOptions();
+  const bulkSel = $("lab-bulk-bot");
+  if (bulkSel) {
+    const prevBulk = bulkSel.value;
+    bulkSel.innerHTML = "";
+    const defOpt = document.createElement("option");
+    defOpt.value = "";
+    defOpt.textContent = appState.lang === "zh" ? "恢复队伍默认 Bot" : "Team Default Bot";
+    bulkSel.appendChild(defOpt);
+    for (const b of botOpts) {
+      const opt = document.createElement("option");
+      opt.value = b.id;
+      opt.textContent = b.label || b.id;
+      bulkSel.appendChild(opt);
+    }
+    if (prevBulk) bulkSel.value = prevBulk;
+  }
+
   const teams = appState.bootstrap?.teams || [];
   container.innerHTML = "";
   for (const t of teams) {
     const isChecked = prevChecked ? prevChecked.has(t.id) : true;
-    const label = document.createElement("label");
-    label.className = "lab-team-chip" + (isChecked ? " checked" : "");
-    label.title = `${t.id} (${t.bot_class || ""})`;
+    const row = document.createElement("div");
+    row.className = "lab-team-chip" + (isChecked ? " checked" : "");
+    row.title = `${t.id} (${t.bot_class || ""})`;
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.value = t.id;
     cb.checked = isChecked;
     cb.addEventListener("change", () => {
-      label.classList.toggle("checked", cb.checked);
+      row.classList.toggle("checked", cb.checked);
       updateTournamentSelectionSummary();
     });
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "lab-team-name";
+    nameSpan.style.cursor = "pointer";
     nameSpan.textContent = appState.lang === "zh" ? (t.name_zh || t.name || t.id) : (t.name_en || t.name || t.id);
+    nameSpan.addEventListener("click", () => {
+      cb.checked = !cb.checked;
+      row.classList.toggle("checked", cb.checked);
+      updateTournamentSelectionSummary();
+    });
 
-    const clsSpan = document.createElement("span");
-    clsSpan.className = "lab-team-cls";
-    clsSpan.textContent = (t.bot_class || "").split(".").pop() || "Bot";
+    const sel = document.createElement("select");
+    sel.className = "lab-team-bot";
+    const shortDefault = (t.bot_class || "CircusSearchBot").split(".").pop() || "Bot";
+    const defOpt = document.createElement("option");
+    defOpt.value = "";
+    defOpt.textContent = appState.lang === "zh" ? `队伍默认 (${shortDefault})` : `Default (${shortDefault})`;
+    sel.appendChild(defOpt);
+    for (const b of botOpts) {
+      const opt = document.createElement("option");
+      opt.value = b.id;
+      opt.textContent = b.label || b.id;
+      sel.appendChild(opt);
+    }
+    if (prevBots.has(t.id)) sel.value = prevBots.get(t.id);
 
-    label.appendChild(cb);
-    label.appendChild(nameSpan);
-    label.appendChild(clsSpan);
-    container.appendChild(label);
+    row.appendChild(cb);
+    row.appendChild(nameSpan);
+    row.appendChild(sel);
+    container.appendChild(row);
   }
   updateTournamentSelectionSummary();
 }
@@ -422,18 +504,24 @@ function bindEvents() {
     setLabSelection((id) => CLASSIC_TOURNAMENT_TEAMS.includes(id))
   );
   $("btn-lab-clear")?.addEventListener("click", () => setLabSelection(() => false));
+  $("btn-lab-apply-bulk")?.addEventListener("click", () => {
+    const bulkVal = $("lab-bulk-bot")?.value ?? "";
+    const container = $("lab-team-list");
+    if (!container) return;
+    for (const row of container.querySelectorAll(".lab-team-chip")) {
+      const cb = row.querySelector('input[type="checkbox"]');
+      const sel = row.querySelector(".lab-team-bot");
+      if (cb?.checked && sel) sel.value = bulkVal;
+    }
+  });
   $("lab-matches")?.addEventListener("input", () => updateTournamentSelectionSummary());
 
   $("btn-run-lab").addEventListener("click", async () => {
     const btn = $("btn-run-lab");
     const openBtn = $("btn-open-report");
     const out = $("lab-output");
-    const teamEntries = appState.bootstrap?.teams || [];
-    const selectedIds = getSelectedTournamentTeams();
-    const teamIds = selectedIds.length > 0
-      ? selectedIds
-      : (teamEntries.length >= 2 ? teamEntries.map((t) => t.id) : CLASSIC_TOURNAMENT_TEAMS);
-    if (teamIds.length < 2) {
+    const selectedSpecs = getSelectedTournamentSpecs();
+    if (selectedSpecs.length < 2) {
       out.textContent = appState.lang === "zh" ? "请至少选择 2 支参赛队伍！" : "Please select at least 2 teams!";
       return;
     }
@@ -441,35 +529,62 @@ function bindEvents() {
     openBtn?.classList.add("hidden");
     out.textContent =
       appState.lang === "zh"
-        ? `正在 Java 26 多线程无头引擎中运行高速锦标赛（${teamIds.length} 支队伍）...`
-        : `Running Java 26 multi-threaded headless tournament (${teamIds.length} teams)...`;
+        ? `正在 Java 26 多线程无头引擎中运行高速锦标赛（${selectedSpecs.length} 支队伍）...`
+        : `Running Java 26 multi-threaded headless tournament (${selectedSpecs.length} teams)...`;
     try {
-      const m = Math.max(2, Math.min(100, parseInt($("lab-matches").value, 10) || 10));
+      const mRaw = parseInt($("lab-matches")?.value, 10);
+      const matches = Number.isFinite(mRaw) ? Math.max(1, Math.min(1000, mRaw)) : 30;
+      const wRaw = parseInt($("lab-workers")?.value, 10);
+      const defaultWorkers = appState.bootstrap?.cpu_cores || navigator.hardwareConcurrency || 4;
+      const workers = Number.isFinite(wRaw) ? Math.max(1, wRaw) : defaultWorkers;
+      const sRaw = parseInt($("lab-seed")?.value, 10);
+      const seed = Number.isFinite(sRaw) ? sRaw : 42;
+      const mrRaw = parseInt($("lab-max-rounds")?.value, 10);
+      const maxRounds = Number.isFinite(mrRaw) ? Math.max(1, Math.min(200, mrRaw)) : 40;
+      const rpRaw = parseInt($("lab-replays")?.value, 10);
+      const replays = Number.isFinite(rpRaw) ? Math.max(0, Math.min(100, rpRaw)) : 2;
+      const budgetStr = ($("lab-budget")?.value ?? "").trim();
+      const budgetRaw = budgetStr === "" ? null : parseFloat(budgetStr);
+      const timeBudget = (budgetRaw !== null && Number.isFinite(budgetRaw) && budgetRaw > 0)
+        ? Math.min(10, Math.max(0.005, budgetRaw))
+        : null;
+      const autoOpen = Boolean($("lab-open-report")?.checked);
+
+      const payload = {
+        bots: selectedSpecs,
+        matches,
+        workers,
+        seed,
+        max_rounds: maxRounds,
+        replays,
+      };
+      if (timeBudget !== null) payload.time_budget = timeBudget;
+
       const res = await fetch("/api/tournament", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bots: teamIds,
-          matches_per_pair: m,
-          time_budget: 0.025,
-        }),
+        body: JSON.stringify(payload),
       });
       const r = await res.json();
+      if (!res.ok || r.error) {
+        throw new Error(r.error || `HTTP ${res.status}`);
+      }
       let txt = `Matches: ${r.total_matches} in ${r.elapsed_sec}s (${r.matches_per_sec} matches/sec)\n`;
       txt += `Avg Rounds: ${r.avg_rounds} | Deathblows: ${r.deathblow_kills} | Heart Attacks: ${r.heart_attack_kills}\n`;
       if (r.report_file) {
         txt += `Report File: tournaments/${r.report_file}\n`;
       }
-      txt += `-------------------------------------------------------------------\n`;
+      txt += `-------------------------------------------------------------------------\n`;
       for (const [name, st] of Object.entries(r.winrates)) {
         const ps = st.power_score !== undefined ? Number(st.power_score).toFixed(1) : "—";
         const tier = st.power_tier || "-";
-        txt += `${name.padEnd(18)} 实力分:${String(ps).padStart(5)} [${tier.padEnd(2)}]  ELO:${String(st.elo).padStart(6)}  W:${String(st.wins).padStart(2)} L:${String(st.losses).padStart(2)} (${st.winrate_pct}%)\n`;
+        txt += `${name.padEnd(26)} 实力分:${String(ps).padStart(5)} [${tier.padEnd(2)}]  ELO:${String(st.elo).padStart(6)}  W:${String(st.wins).padStart(2)} L:${String(st.losses).padStart(2)} (${st.winrate_pct}%)\n`;
       }
       out.textContent = txt;
       if (r.report_url) {
         lastReportUrl = r.report_url;
         openBtn?.classList.remove("hidden");
+        if (autoOpen) window.open(lastReportUrl, "_blank");
       }
       refreshReplays();
     } catch (e) {

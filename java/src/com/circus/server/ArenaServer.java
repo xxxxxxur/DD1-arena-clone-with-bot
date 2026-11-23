@@ -97,6 +97,8 @@ public final class ArenaServer {
             boot.put("presets", presetsList);
             boot.put("teams", TeamConfigStore.reload().values().stream().map(TeamConfigStore.TeamEntry::toMap).toList());
             boot.put("bots", BotRegistry.availableTypes());
+            boot.put("bot_classes", BotRegistry.availableBotClasses());
+            boot.put("cpu_cores", Math.max(1, Runtime.getRuntime().availableProcessors()));
             boot.put("arena_tiers", List.of("novice", "apprentice", "veteran", "champion", "darkest"));
             boot.put("audio_manifest", ae.buildSoundManifest());
             boot.put("loc_en", loc.exportUiBundle("en"));
@@ -243,7 +245,11 @@ public final class ArenaServer {
         if ("/api/teams".equals(path)) {
             List<Map<String, Object>> teams = TeamConfigStore.reload().values().stream()
                     .map(TeamConfigStore.TeamEntry::toMap).toList();
-            res.sendJson(200, Map.of("teams", teams, "bots", BotRegistry.availableTypes()));
+            res.sendJson(200, Map.of(
+                    "teams", teams,
+                    "bots", BotRegistry.availableTypes(),
+                    "bot_classes", BotRegistry.availableBotClasses()
+            ));
             return;
         }
 
@@ -488,21 +494,30 @@ public final class ArenaServer {
         if (rawBots.isEmpty()) {
             rawBots = List.of("direct_kill", "stun_kill", "iron_wall", "iron_hound", "shuffle_kill");
         }
-        int matchesPerPair = Math.min(100, Math.max(2, Json.intVal(body, "matches_per_pair", 4)));
-        double timeBudget = Math.min(0.45, Math.max(0.01, Json.dblVal(body, "time_budget", 0.018)));
+        int defaultWorkers = Math.max(1, Runtime.getRuntime().availableProcessors());
+        int matchesRaw = body.containsKey("matches")
+                ? Json.intVal(body, "matches", 30)
+                : Json.intVal(body, "matches_per_pair", 30);
+        int matchesPerPair = Math.min(1000, Math.max(1, matchesRaw));
+        int workers = Math.min(Math.max(32, defaultWorkers * 2), Math.max(1, Json.intVal(body, "workers", defaultWorkers)));
+        long seed = parseLongVal(body, "seed", 42L);
+        int maxRounds = Math.min(200, Math.max(1, Json.intVal(body, "max_rounds", 40)));
+        int replaysRaw = body.containsKey("replays")
+                ? Json.intVal(body, "replays", 2)
+                : Json.intVal(body, "save_replays", 2);
+        int saveReplays = Math.min(100, Math.max(0, replaysRaw));
+        Double timeBudget = parseOptionalBudget(body);
 
         List<Simulator.BotSpec> specs = new ArrayList<>();
         for (Object entry : rawBots) {
             if (entry instanceof String s) {
-                int colon = s.indexOf(':');
-                if (colon >= 0) {
-                    specs.add(new Simulator.BotSpec(s.substring(0, colon).trim(), emptyToNull(s.substring(colon + 1).trim())));
-                } else {
-                    specs.add(new Simulator.BotSpec(s.trim(), null));
-                }
+                if (!s.isBlank()) specs.add(Simulator.BotSpec.parse(s));
             } else if (entry instanceof Map<?, ?> m) {
                 Map<String, Object> mp = (Map<String, Object>) m;
-                specs.add(new Simulator.BotSpec(Json.str(mp, "type", "tactical"), emptyToNull(Json.str(mp, "preset", null))));
+                String type = Json.str(mp, "type", Json.str(mp, "team", "tactical"));
+                String preset = emptyToNull(Json.str(mp, "preset", null));
+                String botCls = emptyToNull(Json.str(mp, "bot", Json.str(mp, "bot_class", null)));
+                specs.add(new Simulator.BotSpec(type, preset, botCls));
             }
         }
         if (specs.size() < 2) {
@@ -510,11 +525,34 @@ public final class ArenaServer {
             return;
         }
 
-        int workers = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), 8));
         Simulator.TournamentReport report = Simulator.runTournament(
-                specs, matchesPerPair, workers, 42L, 40, 1, Config.REPLAY_DIR, timeBudget
+                specs, matchesPerPair, workers, seed, maxRounds, saveReplays, Config.REPLAY_DIR, timeBudget
         );
         res.sendJson(200, report.toApiMap());
+    }
+
+    private static long parseLongVal(Map<String, Object> m, String key, long def) {
+        Object v = m.get(key);
+        if (v instanceof Number n) return n.longValue();
+        if (v instanceof String s && !s.isBlank()) {
+            try { return Long.parseLong(s.trim()); } catch (NumberFormatException ignored) {}
+        }
+        return def;
+    }
+
+    private static Double parseOptionalBudget(Map<String, Object> m) {
+        Object v = m.containsKey("time_budget") ? m.get("time_budget") : m.get("budget");
+        if (v == null) return null;
+        double d;
+        if (v instanceof Number n) {
+            d = n.doubleValue();
+        } else if (v instanceof String s && !s.isBlank()) {
+            try { d = Double.parseDouble(s.trim()); } catch (NumberFormatException ignored) { return null; }
+        } else {
+            return null;
+        }
+        if (!Double.isFinite(d) || d <= 0) return null;
+        return Math.min(10.0, Math.max(0.005, d));
     }
 
     // ------------------------------------------------------------------ WebSocket Room Handler

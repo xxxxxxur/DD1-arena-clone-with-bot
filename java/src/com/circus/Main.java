@@ -91,13 +91,7 @@ public final class Main {
         for (String raw : botsArg.split(",")) {
             String trimmed = raw.trim();
             if (trimmed.isEmpty()) continue;
-            int colon = trimmed.indexOf(':');
-            if (colon >= 0) {
-                String pr = trimmed.substring(colon + 1).trim();
-                specs.add(new Simulator.BotSpec(trimmed.substring(0, colon).trim(), pr.isEmpty() ? null : pr));
-            } else {
-                specs.add(new Simulator.BotSpec(trimmed, null));
-            }
+            specs.add(Simulator.BotSpec.parse(trimmed));
         }
         if (specs.size() < 2) {
             System.err.println("Please provide at least 2 bots via --bots");

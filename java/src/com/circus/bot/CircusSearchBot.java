@@ -923,13 +923,13 @@ public class CircusSearchBot extends AbstractBot {
         return score;
     }
 
-    private record ScoredAction(double score, Action action) {}
+    protected record ScoredAction(double score, Action action) {}
 
     private List<ScoredAction> orderedCandidates(ArenaEngine engine, int team, int width, Action ttHint, int ply) {
         return orderedCandidates(engine, team, width, ttHint, ply, engine.getLegalActions(team));
     }
 
-    private List<ScoredAction> orderedCandidates(ArenaEngine engine, int team, int width, Action ttHint, int ply, List<Action> legal) {
+    protected List<ScoredAction> orderedCandidates(ArenaEngine engine, int team, int width, Action ttHint, int ply, List<Action> legal) {
         int n = legal.size();
         if (n == 0) return Collections.emptyList();
 

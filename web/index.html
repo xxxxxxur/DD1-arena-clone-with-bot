@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Darkest Dungeon: The Butcher's Circus — 屠夫马戏团</title>
-  <link rel="stylesheet" href="/static/css/circus.css?v=5" />
+  <link rel="stylesheet" href="/static/css/circus.css?v=6" />
 </head>
 <body>
   <div id="app">
@@ -130,21 +130,53 @@
           <div class="dialog-body">
             <div class="lab-team-picker">
               <div class="lab-team-header">
-                <span>⚔ 参赛队伍 <span id="lab-team-summary" class="lab-team-summary"></span></span>
+                <span>⚔ 参赛队伍与 Bot 配置 <span id="lab-team-summary" class="lab-team-summary"></span></span>
                 <div class="lab-team-actions">
                   <button type="button" id="btn-lab-select-all" class="btn-mini">全选</button>
                   <button type="button" id="btn-lab-select-classic" class="btn-mini">经典5队</button>
                   <button type="button" id="btn-lab-clear" class="btn-mini">清空</button>
+                  <select id="lab-bulk-bot" class="lab-bulk-select" title="批量为已选队伍设置 Bot"></select>
+                  <button type="button" id="btn-lab-apply-bulk" class="btn-mini">批量应用</button>
                 </div>
               </div>
               <div id="lab-team-list" class="lab-team-grid"></div>
             </div>
-            <div class="form-row">
-              <label>每组对局数</label>
-              <input id="lab-matches" type="number" min="2" max="100" value="10" />
-              <button id="btn-run-lab" class="btn-gold">🔥 运行无头锦标赛</button>
-              <button id="btn-open-report" class="btn-crimson hidden">📊 打开完整数据分析报告</button>
-              <button id="btn-report-center" class="btn-mini" onclick="window.open('/static/tournament_report.html','_blank')">📂 历史报告/导入</button>
+            <div class="lab-params-grid">
+              <div class="lab-param-field" title="命令行参数: --matches">
+                <label for="lab-matches">每组对局 <span>--matches</span></label>
+                <input id="lab-matches" type="number" min="1" max="1000" value="30" />
+              </div>
+              <div class="lab-param-field" title="命令行参数: --workers">
+                <label for="lab-workers">并发线程 <span>--workers</span></label>
+                <input id="lab-workers" type="number" min="1" max="64" value="8" />
+              </div>
+              <div class="lab-param-field" title="命令行参数: --seed">
+                <label for="lab-seed">随机种子 <span>--seed</span></label>
+                <input id="lab-seed" type="number" step="1" value="42" />
+              </div>
+              <div class="lab-param-field" title="命令行参数: --max-rounds">
+                <label for="lab-max-rounds">最大回合 <span>--max-rounds</span></label>
+                <input id="lab-max-rounds" type="number" min="1" max="200" value="40" />
+              </div>
+              <div class="lab-param-field" title="命令行参数: --replays">
+                <label for="lab-replays">保存录像 <span>--replays</span></label>
+                <input id="lab-replays" type="number" min="0" max="100" value="2" />
+              </div>
+              <div class="lab-param-field" title="命令行参数: --budget (留空使用各队/Bot默认预算)">
+                <label for="lab-budget">单步预算(s) <span>--budget</span></label>
+                <input id="lab-budget" type="number" min="0.005" max="10" step="0.01" placeholder="默认 (留空)" />
+              </div>
+            </div>
+            <div class="form-row lab-actions-row">
+              <label class="lab-check-option" title="命令行参数: --open">
+                <input id="lab-open-report" type="checkbox" />
+                <span>完成后自动打开报告 (--open)</span>
+              </label>
+              <div class="lab-action-btns">
+                <button id="btn-run-lab" class="btn-gold">🔥 运行无头锦标赛</button>
+                <button id="btn-open-report" class="btn-crimson hidden">📊 打开完整数据分析报告</button>
+                <button id="btn-report-center" class="btn-mini" onclick="window.open('/static/tournament_report.html','_blank')">📂 历史报告/导入</button>
+              </div>
             </div>
             <div id="lab-output" class="lab-output"></div>
             <div class="replay-box">
@@ -402,6 +434,6 @@
     </main>
   </div>
 
-  <script type="module" src="/static/js/main.js?v=13"></script>
+  <script type="module" src="/static/js/main.js?v=14"></script>
 </body>
 </html>
