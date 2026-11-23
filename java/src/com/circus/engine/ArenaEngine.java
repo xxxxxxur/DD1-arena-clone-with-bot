@@ -34,6 +34,13 @@ public final class ArenaEngine {
     private final EffectiveStats scratchStatsB;
     private final EffectiveStats scratchStatsC;
 
+    /**
+     * Search-only one-shot outcome override for exact probability-weighted Expectimax branches.
+     * 0 = normal RNG; 1 = force hit + deathblow kill; 2 = force hit + expected dmg + deathblow resist;
+     * 3 = force miss; 4 = force hit + expected dmg. Always reset to 0 after step().
+     */
+    public int searchOutcomeMode = 0;
+
     /** Reusable calculation buffers. Confine to one search thread; step clones sequentially. */
     public static final class SearchScratch {
         private final EffectiveStats a = new EffectiveStats();
@@ -540,6 +547,15 @@ public final class ArenaEngine {
     // ------------------------------------------------------------------ Selectable Actors & Legal Actions
     public List<UnitState> getSelectableActors(int team) {
         ArrayList<UnitState> src = state.teams[team];
+        if (state.lockedActorUid != null && team == state.activeTeam) {
+            for (int i = 0, n = src.size(); i < n; i++) {
+                UnitState u = src.get(i);
+                if (u.uid.equals(state.lockedActorUid) && u.alive && !u.isCorpse && !u.actedThisRound) {
+                    return List.of(u);
+                }
+            }
+            state.lockedActorUid = null;
+        }
         ArrayList<UnitState> nonDazed = null;
         ArrayList<UnitState> all = null;
         for (int i = 0, n = src.size(); i < n; i++) {
@@ -641,6 +657,7 @@ public final class ArenaEngine {
             return false;
         }
         if ("abomination".equals(actor.heroId)) {
+            if (sdef.isTransform && actor.transformedThisRound) return false;
             if ("human".equals(sdef.abomForm) && actor.isBeast) return false;
             if ("beast".equals(sdef.abomForm) && !actor.isBeast) return false;
         }
@@ -765,41 +782,49 @@ public final class ArenaEngine {
             }
         }
 
-        state.turnCount++;
-        actor.dazed = false;
-        if (events != null) {
-            events.add(new CombatEvent("TURN_START", mapOf("actor_uid", actor.uid, "team", team, "round", state.roundNum)));
-        }
+        boolean isFreeActionContinuation = state.lockedActorUid != null && state.lockedActorUid.equals(actor.uid);
+        if (isFreeActionContinuation) {
+            state.lockedActorUid = null;
+        } else {
+            state.turnCount++;
+            actor.dazed = false;
+            if (events != null) {
+                events.add(new CombatEvent("TURN_START", mapOf("actor_uid", actor.uid, "team", team, "round", state.roundNum)));
+            }
 
-        // 1. Start-of-turn DoTs, Regen, Horror, Trait barks
-        processTurnStartEffects(actor, events);
-        if (!actor.alive) {
-            finishTurnAndAdvance(actor, events);
-            if (events != null) {
-                eventsHistory.addAll(events);
-                return events;
+            // 1. Start-of-turn DoTs, Regen, Horror, Trait barks
+            processTurnStartEffects(actor, events);
+            if (!actor.alive) {
+                finishTurnAndAdvance(actor, events);
+                if (events != null) {
+                    eventsHistory.addAll(events);
+                    return events;
+                }
+                return Collections.emptyList();
             }
-            return Collections.emptyList();
-        }
 
-        // 2. Check Stun
-        if (actor.stunned) {
-            actor.stunned = false;
-            breakGuardBy(actor, events);
-            // Official DD Stun Recovery: +50% Stun Resist for 2 full rounds AFTER recovery turn
-            actor.buffs.add(new ActiveBuff(StatKey.STUN_RES, 0, "stun_res", 50.0, 2, "stun_recovery", false, true));
-            if (events != null) {
-                events.add(new CombatEvent("STUN_SKIP", mapOf("actor_uid", actor.uid)));
+            // 2. Check Stun
+            if (actor.stunned) {
+                actor.stunned = false;
+                breakGuardBy(actor, events);
+                // Official DD Stun Recovery: +50% Stun Resist for 2 full rounds AFTER recovery turn
+                actor.buffs.add(new ActiveBuff(StatKey.STUN_RES, 0, "stun_res", 50.0, 2, "stun_recovery", false, true));
+                if (events != null) {
+                    events.add(new CombatEvent("STUN_SKIP", mapOf("actor_uid", actor.uid)));
+                }
+                finishTurnAndAdvance(actor, events);
+                if (events != null) {
+                    eventsHistory.addAll(events);
+                    return events;
+                }
+                return Collections.emptyList();
             }
-            finishTurnAndAdvance(actor, events);
-            if (events != null) {
-                eventsHistory.addAll(events);
-                return events;
-            }
-            return Collections.emptyList();
         }
 
         // 3. Execute chosen action
+        boolean freeActionUsed = false;
+        int outcomeMode = this.searchOutcomeMode;
+        this.searchOutcomeMode = 0;
         if ("PASS".equals(action.kind)) {
             if (events != null) events.add(new CombatEvent("PASS", mapOf("actor_uid", actor.uid)));
             applyStress(actor, 5, events, "pass");
@@ -809,10 +834,28 @@ public final class ArenaEngine {
             }
         } else if ("SKILL".equals(action.kind) && chosenHdef != null && chosenSdef != null) {
             if (canUseSkill(actor, chosenSdef)) {
-                executeSkill(actor, chosenHdef, chosenSdef, action.targetUids, events);
+                this.searchOutcomeMode = outcomeMode;
+                try {
+                    executeSkill(actor, chosenHdef, chosenSdef, action.targetUids, events);
+                } finally {
+                    this.searchOutcomeMode = 0;
+                }
+                if (chosenSdef.isTransform && actor.alive && !actor.isCorpse) {
+                    freeActionUsed = true;
+                }
             } else if (events != null) {
                 events.add(new CombatEvent("PASS", mapOf("actor_uid", actor.uid, "reason", "interrupted")));
             }
+        }
+
+        // Free action (e.g. Abomination Transform): keep this actor's turn active for immediate follow-up
+        if (freeActionUsed) {
+            state.lockedActorUid = actor.uid;
+            if (events != null) {
+                eventsHistory.addAll(events);
+                return events;
+            }
+            return Collections.emptyList();
         }
 
         // 4. End of actor's turn & advance
@@ -934,8 +977,9 @@ public final class ArenaEngine {
             events.add(new CombatEvent("SKILL_USE", m));
         }
 
-        // Abomination Transform special
+        // Abomination Transform special (free action, once per round)
         if (sdef.isTransform) {
+            actor.transformedThisRound = true;
             actor.isBeast = !actor.isBeast;
             if (actor.isBeast) {
                 if (events != null) events.add(new CombatEvent("TRANSFORM", mapOf("unit_uid", actor.uid, "is_beast", true)));
@@ -1212,7 +1256,9 @@ public final class ArenaEngine {
         double hitChance = target.isCorpse ? 100.0
                 : clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0);
 
-        if (rng.nextDouble() * 100.0 >= hitChance) {
+        int mode = this.searchOutcomeMode;
+        boolean missed = (mode == 3) || (mode == 0 && rng.nextDouble() * 100.0 >= hitChance);
+        if (missed) {
             if (actor.hasTrinketFlag(UnitState.TF_TASTE_OF_GRANDEUR)) {
                 applyStress(actor, 8, events, "taste_of_grandeur");
             }
@@ -1243,8 +1289,10 @@ public final class ArenaEngine {
         }
         if (isBleeding) critChance += sdef.bonusCritVsBleed;
         if (isBlighted) critChance += sdef.bonusCritVsBlight;
-        boolean isCrit = (!target.isCorpse) && (sdef.dmgMod > -1.0)
-                && (rng.nextDouble() * 100.0 < clamp(critChance, 0.0, 100.0));
+        double effCritPct = clamp(critChance, 0.0, 100.0);
+        boolean expectedDmgMode = (mode == 2 || mode == 4);
+        boolean isCrit = (!target.isCorpse) && (sdef.dmgMod > -1.0) && !expectedDmgMode
+                && (rng.nextDouble() * 100.0 < effCritPct);
 
         // Compute HP damage
         int dmg = 0;
@@ -1279,7 +1327,13 @@ public final class ArenaEngine {
             if ("rake".equals(sdef.id)) mult += astats.values[StatKey.RAKE_DMG_PCT];
             mult = Math.max(0.10, mult);
 
-            double raw = isCrit ? (hi * mult * 1.5) : (rng.nextUniform(lo, hi) * mult);
+            double raw;
+            if (expectedDmgMode) {
+                double pc = effCritPct / 100.0;
+                raw = ((lo + hi) * 0.5 * (1.0 - pc) + hi * 1.5 * pc) * mult;
+            } else {
+                raw = isCrit ? (hi * mult * 1.5) : (rng.nextUniform(lo, hi) * mult);
+            }
 
             if (target.aegisBlocks > 0) {
                 target.aegisBlocks--;
@@ -1317,7 +1371,8 @@ public final class ArenaEngine {
                     events.add(makeHitEvent(actor, target, sdef, isMarked, dmg, isCrit, 0));
                 }
                 double killChance = clamp(100.0 - tstats.values[StatKey.DEATHBLOW_RES] + sdef.deathblowBonus + dbChance, 5.0, 100.0);
-                if (rng.nextDouble() * 100.0 < killChance) {
+                boolean doKill = (mode == 1) || (mode != 2 && rng.nextDouble() * 100.0 < killChance);
+                if (doKill) {
                     killed = true;
                     killHero(target, events, !(isCrit || sdef.noCorpseOnKill), "deathblow");
                 } else if (events != null) {
@@ -1881,6 +1936,7 @@ public final class ArenaEngine {
 
     // ------------------------------------------------------------------ End of Turn & Round Management
     private void finishTurnAndAdvance(UnitState actor, List<CombatEvent> events) {
+        state.lockedActorUid = null;
         actor.actedThisRound = true;
         if (buffSum(actor, StatKey.DAZE) != 0.0) {
             actor.dazed = true;
@@ -1990,11 +2046,15 @@ public final class ArenaEngine {
             return;
         }
 
+        state.lockedActorUid = null;
         for (int t = 0; t < 2; t++) {
             ArrayList<UnitState> list = state.teams[t];
             for (int i = 0, n = list.size(); i < n; i++) {
                 UnitState u = list.get(i);
-                if (u.alive && !u.isCorpse) u.actedThisRound = false;
+                if (u.alive && !u.isCorpse) {
+                    u.actedThisRound = false;
+                    u.transformedThisRound = false;
+                }
             }
         }
 
@@ -2066,6 +2126,7 @@ public final class ArenaEngine {
         m.put("guard_rounds", unit.guardRounds);
         m.put("aegis_blocks", unit.aegisBlocks);
         m.put("is_beast", unit.isBeast);
+        m.put("transformed_this_round", unit.transformedThisRound);
         m.put("finale_bonus_pct", Math.rint(unit.finaleBonusPct * 100.0) / 100.0);
         m.put("trait_id", unit.traitId);
         m.put("is_virtuous", unit.isVirtuous);
@@ -2142,6 +2203,9 @@ public final class ArenaEngine {
         long h = 0x9E3779B97F4A7C15L;
         h ^= (state.activeTeam * 0xBF58476D1CE4E5B9L);
         h = Long.rotateLeft(h, 13) ^ (state.roundNum * 0x94D049BB133111EBL);
+        if (state.lockedActorUid != null) {
+            h = Long.rotateLeft(h, 17) ^ (state.lockedActorUid.hashCode() * 0x517CC1B727220A95L);
+        }
         for (int t = 0; t < 2; t++) {
             ArrayList<UnitState> team = state.teams[t];
             for (int i = 0, n = team.size(); i < n; i++) {
@@ -2165,7 +2229,8 @@ public final class ArenaEngine {
                         | (u.isVirtuous ? (1L << 47) : 0L)
                         | (u.isAfflicted ? (1L << 48) : 0L)
                         | (((long) u.dots.size() & 0xFL) << 49)
-                        | (((long) u.buffs.size() & 0x1FL) << 53);
+                        | (((long) u.buffs.size() & 0x1FL) << 53)
+                        | (u.transformedThisRound ? (1L << 58) : 0L);
                 h ^= mix64(uh ^ ((long) (t * 4 + i + 1) * 0x517CC1B727220A95L));
                 h = Long.rotateLeft(h, 7);
             }

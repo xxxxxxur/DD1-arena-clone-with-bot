@@ -712,6 +712,7 @@ public final class Models {
         public static final int FRESH_GUARD = 1 << 3;
 
         public boolean isBeast = false;
+        public boolean transformedThisRound = false;
         public double finaleBonusPct = 0.0;
 
         public String traitId = null;
@@ -783,6 +784,7 @@ public final class Models {
             this.aegisBlocks = src.aegisBlocks;
             this.freshStatusMask = src.freshStatusMask;
             this.isBeast = src.isBeast;
+            this.transformedThisRound = src.transformedThisRound;
             this.finaleBonusPct = src.finaleBonusPct;
             this.traitId = src.traitId;
             this.isVirtuous = src.isVirtuous;
@@ -933,6 +935,7 @@ public final class Models {
         public Integer winner = null;
         public String winReason = "";
         public int turnCount = 0;
+        public String lockedActorUid = null;
         public final int maxRounds;
         public final long seed;
 
@@ -958,6 +961,7 @@ public final class Models {
             g.winner = winner;
             g.winReason = winReason;
             g.turnCount = turnCount;
+            g.lockedActorUid = lockedActorUid;
             return g;
         }
     }

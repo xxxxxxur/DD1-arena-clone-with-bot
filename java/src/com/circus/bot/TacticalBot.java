@@ -112,8 +112,10 @@ public class TacticalBot extends AbstractBot {
             boolean isBeast = Json.boolVal(actor, "is_beast", false);
             int stress = Json.intVal(actor, "stress", 0);
             int rank = Json.intVal(actor, "rank", 1);
-            if (!isBeast) return ((rank == 1 || rank == 2) && stress < 70) ? 45.0 : -25.0;
-            return (stress > 130 || Json.intVal(actor, "hp", 1) < Json.intVal(actor, "max_hp", 1) * 0.35) ? 50.0 : -30.0;
+            int hp = Json.intVal(actor, "hp", 1);
+            int maxHp = Math.max(1, Json.intVal(actor, "max_hp", 1));
+            if (!isBeast) return (rank <= 3) ? 75.0 : 15.0;
+            return (stress >= 115 || hp < maxHp * 0.42 || rank == 4) ? 65.0 : -20.0;
         }
 
         if (!sdef.isAttack) {

@@ -40,12 +40,12 @@ public class CircusSearchBot extends AbstractBot {
             "stress", new SearchProfile(1.0, 1.05, 1.0, 1.10, 1.55, 1.0, 1.0)
     );
 
-    private static final int TT_SIZE = 1 << 16; // 65,536 entries
+    private static final int TT_SIZE = 1 << 17; // 131,072 entries
     private static final int TT_MASK = TT_SIZE - 1;
     private static final byte TT_EXACT = 1;
     private static final byte TT_LOWER = 2;
     private static final byte TT_UPPER = 3;
-    private static final int MAX_KILLER_PLY = 16;
+    private static final int MAX_KILLER_PLY = 20;
 
     protected final double timeBudgetSec;
     protected final SearchProfile profile;
@@ -53,6 +53,7 @@ public class CircusSearchBot extends AbstractBot {
     protected final int rootWidth;
     protected final int branchWidth;
     protected final boolean detailedTtHash;
+    protected final double formationWeight;
     protected final boolean strategicEval;
     protected final double mitigationWeight;
     protected final double pressureWeight;
@@ -77,6 +78,15 @@ public class CircusSearchBot extends AbstractBot {
     // Reusable scratchpad stats (single-threaded per bot instance)
     private final EffectiveStats scratchA = new EffectiveStats();
     private final EffectiveStats scratchB = new EffectiveStats();
+    private final EffectiveStats[] enemyStatsCache = {
+            new EffectiveStats(), new EffectiveStats(), new EffectiveStats(), new EffectiveStats()
+    };
+    private final UnitState[] enemyUnitsCache = new UnitState[4];
+    private int enemyStatsCacheCount = 0;
+    private String bestExecUid = null;
+    private double bestExecDbBonus = 0.0;
+    private double secondExecDbBonus = 0.0;
+    private int unactedAllyCount = 0;
     private final ArenaEngine.SearchScratch simulationScratch = new ArenaEngine.SearchScratch();
     private final double[] threatScratch = new double[4];
     private final String[] threatUidScratch = new String[4];
@@ -106,7 +116,7 @@ public class CircusSearchBot extends AbstractBot {
         this(name, timeBudgetSec,
                 PROFILES.getOrDefault(profileName != null ? profileName : "balanced", PROFILES.get("balanced")),
                 seed, presetId, maxDepth, rootWidth, branchWidth,
-                false, false, 0.0, 0.0, 0.0, 120.0, 0.0, 0.0);
+                false, 1.0, false, 0.0, 0.0, 0.0, 120.0, 0.0, 0.0);
     }
 
     protected CircusSearchBot(
@@ -119,6 +129,7 @@ public class CircusSearchBot extends AbstractBot {
             int rootWidth,
             int branchWidth,
             boolean detailedTtHash,
+            double formationWeight,
             boolean strategicEval,
             double mitigationWeight,
             double pressureWeight,
@@ -134,6 +145,7 @@ public class CircusSearchBot extends AbstractBot {
         this.rootWidth = Math.max(2, rootWidth);
         this.branchWidth = Math.max(2, branchWidth);
         this.detailedTtHash = detailedTtHash;
+        this.formationWeight = Math.max(0.0, formationWeight);
         this.strategicEval = strategicEval;
         this.mitigationWeight = mitigationWeight;
         this.pressureWeight = pressureWeight;
@@ -144,7 +156,7 @@ public class CircusSearchBot extends AbstractBot {
     }
 
     public CircusSearchBot(String name, double timeBudgetSec, String profileName, Long seed, String presetId) {
-        this(name, timeBudgetSec, profileName, seed, presetId, 10, 14, 6);
+        this(name, timeBudgetSec, profileName, seed, presetId, 14, 14, 6);
     }
 
     private static SearchProfile resolveProfile(BotContext ctx) {
@@ -168,10 +180,11 @@ public class CircusSearchBot extends AbstractBot {
                 resolveProfile(ctx),
                 ctx.seed(),
                 ctx.presetId(),
-                ctx.optionInt("max_depth", 10),
+                ctx.optionInt("max_depth", 14),
                 ctx.optionInt("root_width", 10),
                 ctx.optionInt("branch_width", 4),
                 ctx.optionBool("detailed_tt_hash", true),
+                ctx.optionDouble("formation_weight", 1.0),
                 ctx.optionBool("strategic_eval",
                         ctx.optionDouble("mitigation_weight", 0.0) > 0.0
                                 || ctx.optionDouble("pressure_weight", 0.0) > 0.0
@@ -274,8 +287,8 @@ public class CircusSearchBot extends AbstractBot {
         double base = 1850.0 * (isMine ? p.survivalWeight : p.killWeight) * valW;
 
         double hpFrac = (double) u.hp / Math.max(1, u.maxHp);
-        // Fast concave HP curve (approx hpFrac^0.72 without slow Math.pow on 0/1 extremes)
-        double hpScore = (hpFrac <= 0.0) ? 0.0 : (hpFrac >= 1.0 ? 320.0 : Math.pow(hpFrac, 0.72) * 320.0);
+        // Fast concave HP curve (hpFrac^0.75 via two sqrts, ~15x faster than Math.pow)
+        double hpScore = (hpFrac <= 0.0) ? 0.0 : (hpFrac >= 1.0 ? 320.0 : Math.sqrt(hpFrac * Math.sqrt(hpFrac)) * 320.0);
 
         double ddPen = 0.0;
         if (u.atDeathsDoor && u.hp <= 0) {
@@ -325,19 +338,112 @@ public class CircusSearchBot extends AbstractBot {
             }
         }
 
-        int usableSkills = 0;
-        SkillDef[] eq = u.equippedSkillDefs;
-        for (int i = 0; i < eq.length; i++) {
-            if (eq[i] != null && eq[i].canLaunchFrom(u.rank)) usableSkills++;
+        double formPen = formationPenaltyAtRank(u, u.rank);
+        if (formPen > 0.0) {
+            if (isMine) status -= formPen * formationWeight;
+            else status -= formPen * Math.max(0.75, formationWeight) * p.disruptionWeight;
         }
-        if (usableSkills == 0) status -= 150.0;
-        else if (usableSkills == 1) status -= 55.0;
 
         if ("jester".equals(u.heroId) && u.finaleBonusPct > 0.0) {
             status += Math.min(1.5, u.finaleBonusPct) * 70.0;
         }
 
         return base + hpScore - ddPen - stressPen + status;
+    }
+
+    /**
+     * Formation integrity penalty for a unit at a given rank.
+     * Dance/reposition heroes with an active self-move skill at this rank are NOT falsely penalized.
+     */
+    private static double formationPenaltyAtRank(UnitState u, int rank) {
+        SkillDef[] eq = u.equippedSkillDefs;
+        boolean isAbom = "abomination".equals(u.heroId);
+        int totalActive = 0;
+        int usable = 0;
+        boolean hasDanceEscape = false;
+        for (int i = 0; i < eq.length; i++) {
+            SkillDef sd = eq[i];
+            if (sd == null || sd.isTransform) continue;
+            if (isAbom) {
+                if ("human".equals(sd.abomForm) && u.isBeast) continue;
+                if ("beast".equals(sd.abomForm) && !u.isBeast) continue;
+            }
+            if (sd.maxUses > 0 && u.skillUses.getOrDefault(sd.id, 0) >= sd.maxUses) continue;
+            totalActive++;
+            if (sd.canLaunchFrom(rank)) {
+                usable++;
+                if (sd.selfMove != 0) hasDanceEscape = true;
+            }
+        }
+        if (totalActive == 0) return 0.0;
+        double pen;
+        if (usable == 0) {
+            pen = 210.0;
+        } else if (usable == 1) {
+            pen = hasDanceEscape ? 25.0 : 95.0;
+        } else if (usable == 2 && totalActive >= 4) {
+            pen = hasDanceEscape ? 0.0 : 28.0;
+        } else {
+            pen = 0.0;
+        }
+        if (pen > 0.0 && !u.actedThisRound && !u.stunned) pen *= 1.15;
+        return pen;
+    }
+
+    /**
+     * Computes exact change in total team formation penalty if {@code mover} shifts by {@code moveDelta}
+     * (positive = forward toward rank 1, negative = backward toward rank 4).
+     * Positive return value means the team's formation got WORSE; negative means it IMPROVED.
+     */
+    private static double teamFormationShiftDelta(ArenaEngine engine, int team, UnitState mover, int moveDelta) {
+        if (moveDelta == 0) return 0.0;
+        int slots = engine.countActiveSlots(team);
+        if (slots <= 1) return 0.0;
+        int oldRank = mover.rank;
+        int newRank = Math.max(1, Math.min(slots, oldRank - moveDelta));
+        if (newRank == oldRank) return 0.0;
+
+        double before = 0.0;
+        double after = 0.0;
+        ArrayList<UnitState> units = engine.state.teams[team];
+        for (int i = 0, n = units.size(); i < n; i++) {
+            UnitState u = units.get(i);
+            if (!u.alive || u.isCorpse) continue;
+            int r = u.rank;
+            int nr = r;
+            if (u == mover) {
+                nr = newRank;
+            } else if (newRank < oldRank && r >= newRank && r < oldRank) {
+                nr = r + 1;
+            } else if (newRank > oldRank && r > oldRank && r <= newRank) {
+                nr = r - 1;
+            }
+            if (nr != r) {
+                before += formationPenaltyAtRank(u, r);
+                after += formationPenaltyAtRank(u, nr);
+            }
+        }
+        return after - before;
+    }
+
+    private static double unitMaxDeathblowBonus(ArenaEngine engine, UnitState u) {
+        double base = engine.buffSum(u, StatKey.DEATHBLOW_CHANCE);
+        double bestSkill = 0.0;
+        SkillDef[] eq = u.equippedSkillDefs;
+        for (int i = 0; i < eq.length; i++) {
+            SkillDef sd = eq[i];
+            if (sd != null && sd.canLaunchFrom(u.rank) && sd.deathblowBonus > bestSkill) {
+                bestSkill = sd.deathblowBonus;
+            }
+        }
+        return base + bestSkill;
+    }
+
+    private EffectiveStats cachedEnemyStats(ArenaEngine engine, UnitState t) {
+        for (int i = 0; i < enemyStatsCacheCount; i++) {
+            if (enemyUnitsCache[i] == t) return enemyStatsCache[i];
+        }
+        return engine.computeEffectiveStats(t, null, "", scratchB);
     }
 
     public double evaluateState(ArenaEngine engine, int myTeam) {
@@ -429,12 +535,13 @@ public class CircusSearchBot extends AbstractBot {
             int curUsable = 0, newUsable = 0;
             int newRank = (int) ArenaEngine.clamp(actor.rank - act.moveDelta, 1, Math.max(1, engine.countActiveSlots(team)));
             for (SkillDef sd : actor.equippedSkillDefs) {
-                if (sd != null) {
+                if (sd != null && !sd.isTransform) {
                     if (sd.canLaunchFrom(actor.rank)) curUsable++;
                     if (sd.canLaunchFrom(newRank)) newUsable++;
                 }
             }
-            return -140.0 + (newUsable - curUsable) * 75.0;
+            double teamDelta = teamFormationShiftDelta(engine, team, actor, act.moveDelta);
+            return -140.0 + (newUsable - curUsable) * 60.0 - teamDelta * 0.85 * formationWeight;
         }
 
         HeroDef hdef = actor.heroDef;
@@ -459,7 +566,7 @@ public class CircusSearchBot extends AbstractBot {
                 }
 
                 EffectiveStats astats = engine.computeEffectiveStats(actor, t, sdef.isRanged ? "ranged" : "melee", scratchA);
-                EffectiveStats tstats = engine.computeEffectiveStats(t, null, "", scratchB);
+                EffectiveStats tstats = cachedEnemyStats(engine, t);
 
                 double valW = heroValueWeight(t);
                 double pHit = ArenaEngine.clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0) / 100.0;
@@ -510,9 +617,11 @@ public class CircusSearchBot extends AbstractBot {
                         if ("rake".equals(sdef.id)) mult += astats.values[StatKey.RAKE_DMG_PCT];
                         mult = Math.max(0.10, mult);
 
-                        double avgRaw = ((lo + hi) * 0.5 * (1.0 - pCrit) + hi * 1.5 * pCrit) * mult;
                         double protEff = sdef.armorPiercing ? 0.0 : Math.max(0.0, tstats.values[StatKey.PROT] - astats.values[StatKey.ARMOR_PIERCE]);
-                        avgRaw *= (1.0 - protEff) * (1.0 + tstats.values[StatKey.DAMAGE_TAKEN_PCT]);
+                        double dmgScale = mult * (1.0 - protEff) * (1.0 + tstats.values[StatKey.DAMAGE_TAKEN_PCT]);
+                        double minDmg = Math.max(1.0, lo * dmgScale);
+                        double maxDmg = Math.max(minDmg, hi * dmgScale);
+                        double avgRaw = ((lo + hi) * 0.5 * (1.0 - pCrit) + hi * 1.5 * pCrit) * dmgScale;
                         expDmg = Math.max(1.0, avgRaw);
 
                         // PRIORITY #1: ACTUAL KILL PROBABILITY
@@ -523,18 +632,43 @@ public class CircusSearchBot extends AbstractBot {
                             double pKill = pHit * ArenaEngine.clamp(expDmg / Math.max(1.0, t.hp), 0.5, 1.0);
                             score += pKill * 2300.0 * p.killWeight * valW;
                         } else {
+                            // Exact probability of putting target onto Death's Door (no overkill bonus on 1-HP targets!)
+                            double pEnterDd;
+                            if (t.hp <= minDmg) {
+                                pEnterDd = 1.0;
+                            } else if (t.hp <= maxDmg) {
+                                pEnterDd = ((maxDmg - t.hp + 1.0) / (maxDmg - minDmg + 1.0)) * (1.0 - pCrit) + pCrit;
+                            } else if (t.hp <= maxDmg * 1.5) {
+                                pEnterDd = pCrit;
+                            } else {
+                                pEnterDd = 0.0;
+                            }
                             double effHpDmg = Math.min(t.hp, expDmg);
                             double woundMult = 1.0 + 0.55 * (1.0 - (double) t.hp / Math.max(1, t.maxHp));
                             score += pHit * effHpDmg * 13.5 * woundMult * p.damageWeight * valW;
-                            if (expDmg >= t.hp) {
-                                score += pHit * 240.0 * p.damageWeight * valW;
+                            if (pEnterDd > 0.0) {
+                                // Uniform Death's Door entry value regardless of overkill damage
+                                score += pHit * pEnterDd * 260.0 * p.damageWeight * valW;
+                                // Setup -> Executioner ordering: reward non-finisher cracking target to DD while a high-DB ally is unacted
+                                if (unactedAllyCount >= 2 && pEnterDd >= 0.25) {
+                                    double actorMaxDb = unitMaxDeathblowBonus(engine, actor);
+                                    if (bestExecUid != null && !bestExecUid.equals(actor.uid) && bestExecDbBonus > actorMaxDb + 10.0) {
+                                        double dbGap = Math.min(60.0, bestExecDbBonus - actorMaxDb);
+                                        score += pHit * pEnterDd * dbGap * 4.5 * p.killWeight * valW;
+                                    } else if (bestExecUid != null && bestExecUid.equals(actor.uid)
+                                            && bestExecDbBonus > secondExecDbBonus + 10.0 && t.hp <= minDmg) {
+                                        double dbGap = Math.min(60.0, bestExecDbBonus - secondExecDbBonus);
+                                        score -= pHit * dbGap * 2.8 * p.killWeight * valW;
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // Stress damage & Heart Attack KILL probability
-                double baseStress = sdef.stressDmg + (expDmg > 0 ? 10.0 * pCrit : 0.0);
+                // Stress damage & Heart Attack KILL probability (skip overkill crit-stress on guaranteed-DD low-HP hits)
+                boolean guaranteedDdOverkill = !t.atDeathsDoor && sdef.dmgMod > -1.0 && t.aegisBlocks == 0 && expDmg >= t.hp * 2.0 && t.hp <= 4;
+                double baseStress = sdef.stressDmg + (expDmg > 0 && !guaranteedDdOverkill ? 10.0 * pCrit : 0.0);
                 if (baseStress > 0) {
                     double expStress = baseStress * Math.max(0.25, 1.0 + astats.values[StatKey.STRESS_DMG_PCT])
                             * (1.0 - tstats.values[StatKey.STRESS_RES] / 100.0);
@@ -590,21 +724,19 @@ public class CircusSearchBot extends AbstractBot {
                     score += pDot * Math.min(t.hp, sdef.blight.amount * Math.min(sdef.blight.rounds, 3)) * 9.0 * p.damageWeight;
                 }
 
-                // Pull / Push rank disruption
-                if ((sdef.pull > 0 || sdef.push > 0) && !t.isCorpse) {
+                // Pull / Push / Shuffle rank disruption (scored by actual enemy skill loss!)
+                if ((sdef.pull > 0 || sdef.push > 0 || sdef.shuffleTarget) && !t.isCorpse) {
                     double pMv = pHit * ArenaEngine.clamp((sdef.moveChance + astats.values[StatKey.MOVE_CHANCE] - tstats.values[StatKey.MOVE_RES]) / 100.0, 0.0, 1.0);
-                    double disrupt;
-                    String tid = t.heroId;
-                    if (sdef.pull > 0 && t.rank >= 3 && ("vestal".equals(tid) || "arbalest".equals(tid) || "musketeer".equals(tid)
-                            || "houndmaster".equals(tid) || "plague_doctor".equals(tid) || "occultist".equals(tid))) {
-                        disrupt = 145.0;
-                    } else if (sdef.push > 0 && t.rank <= 2 && ("crusader".equals(tid) || "leper".equals(tid)
-                            || "flagellant".equals(tid) || "hellion".equals(tid) || "abomination".equals(tid))) {
-                        disrupt = 140.0;
-                    } else {
-                        disrupt = 42.0;
+                    double disrupt = 0.0;
+                    if (sdef.pull > 0 || sdef.push > 0) {
+                        int moveDelta = sdef.pull > 0 ? sdef.pull : -sdef.push;
+                        double enemyDelta = teamFormationShiftDelta(engine, oppTeam, t, moveDelta);
+                        disrupt = Math.max(20.0, 35.0 + enemyDelta * 1.15);
+                    } else if (sdef.shuffleTarget) {
+                        double curPen = formationPenaltyAtRank(t, t.rank);
+                        disrupt = curPen <= 10.0 ? 85.0 : 25.0;
                     }
-                    score += pMv * disrupt * p.disruptionWeight;
+                    score += pMv * disrupt * Math.max(0.75, formationWeight) * p.disruptionWeight;
                 }
 
                 if (sdef.targetDebuffs.length > 0) {
@@ -627,19 +759,27 @@ public class CircusSearchBot extends AbstractBot {
         } else {
             // FRIENDLY / SELF / SURVIVAL SKILLS
             if (sdef.isTransform) {
+                // Free action (once per round): Abomination immediately acts again in the new form.
                 if (!actor.isBeast) {
+                    int livingEnemies = 0;
                     boolean enDd = false;
                     for (UnitState u : engine.state.teams[oppTeam]) {
-                        if (u.alive && !u.isCorpse && u.atDeathsDoor) { enDd = true; break; }
+                        if (u.alive && !u.isCorpse) {
+                            livingEnemies++;
+                            if (u.atDeathsDoor) enDd = true;
+                        }
                     }
-                    int sumStress = 0, aliveCnt = 0;
-                    for (UnitState u : engine.state.teams[team]) {
-                        if (u.alive && !u.isCorpse) { sumStress += u.stress; aliveCnt++; }
-                    }
-                    double avgStress = (double) sumStress / Math.max(1, aliveCnt);
-                    score += (enDd ? 260.0 : 115.0) - Math.max(0.0, avgStress - 65.0) * 3.0;
+                    // Butcher's Circus Transform inflicts 8x3 Horror on all living enemies + unlocks immediate Beast attack
+                    score += livingEnemies * 85.0 * p.stressWeight;
+                    score += (actor.rank <= 3 ? 280.0 * p.damageWeight : 40.0);
+                    if (enDd) score += 140.0 * p.killWeight;
                 } else {
-                    score += (actor.hp < actor.maxHp * 0.35 || actor.stress > 120) ? 180.0 : -120.0;
+                    // Reverting to Human is also a free action (costs self-Daze next round) and unlocks Absolution/Manacles
+                    boolean urgentRecover = actor.atDeathsDoor || actor.hp < actor.maxHp * 0.42 || actor.stress >= 115;
+                    boolean stuckBack = actor.rank == 4;
+                    if (urgentRecover) score += 420.0 * p.survivalWeight;
+                    else if (stuckBack) score += 260.0 * p.survivalWeight;
+                    else score -= 60.0;
                 }
             }
 
@@ -737,6 +877,12 @@ public class CircusSearchBot extends AbstractBot {
             }
             if (maxAllyThreat >= 1.0 && score < 500.0) score -= 90.0;
         }
+        if (sdef.selfMove != 0 && formationWeight > 0.0) {
+            double selfShiftDelta = teamFormationShiftDelta(engine, team, actor, sdef.selfMove);
+            if (selfShiftDelta != 0.0) {
+                score -= selfShiftDelta * 0.70 * formationWeight;
+            }
+        }
         if (strategicEval && "SKILL".equals(act.kind)) {
             score = applyStrategicActionEv(engine, act, actor, sdef, team, maxAllyThreat, anyAllyDd, score);
         }
@@ -793,13 +939,46 @@ public class CircusSearchBot extends AbstractBot {
             if (threatScratch[i] > maxAllyThreat) maxAllyThreat = threatScratch[i];
         }
         boolean anyAllyDd = false;
-        for (UnitState u : engine.state.teams[team]) {
-            if (u.alive && !u.isCorpse && u.atDeathsDoor && u.hp <= 0) { anyAllyDd = true; break; }
+        String bExecUid = null;
+        double bExecDb = -1.0;
+        double sExecDb = -1.0;
+        int unactedAllies = 0;
+        ArrayList<UnitState> myUnits = engine.state.teams[team];
+        for (int i = 0, mn = myUnits.size(); i < mn; i++) {
+            UnitState u = myUnits.get(i);
+            if (!u.alive || u.isCorpse) continue;
+            if (u.atDeathsDoor && u.hp <= 0) anyAllyDd = true;
+            if (!u.actedThisRound && !u.stunned) {
+                unactedAllies++;
+                double db = unitMaxDeathblowBonus(engine, u);
+                if (db > bExecDb) {
+                    sExecDb = bExecDb;
+                    bExecDb = db;
+                    bExecUid = u.uid;
+                } else if (db > sExecDb) {
+                    sExecDb = db;
+                }
+            }
         }
+        bestExecUid = bExecUid;
+        bestExecDbBonus = Math.max(0.0, bExecDb);
+        secondExecDbBonus = Math.max(0.0, sExecDb);
+        unactedAllyCount = unactedAllies;
         boolean oppHasCorpse = false;
-        for (UnitState u : engine.state.teams[1 - team]) {
-            if (u.alive && u.isCorpse) { oppHasCorpse = true; break; }
+        int eCache = 0;
+        ArrayList<UnitState> oppUnits = engine.state.teams[1 - team];
+        for (int i = 0, un = oppUnits.size(); i < un; i++) {
+            UnitState u = oppUnits.get(i);
+            if (!u.alive) continue;
+            if (u.isCorpse) {
+                oppHasCorpse = true;
+            } else if (eCache < 4) {
+                enemyUnitsCache[eCache] = u;
+                engine.computeEffectiveStats(u, null, "", enemyStatsCache[eCache]);
+                eCache++;
+            }
         }
+        enemyStatsCacheCount = eCache;
 
         Action k0 = (ply >= 0 && ply < MAX_KILLER_PLY) ? killers[ply][0] : null;
         Action k1 = (ply >= 0 && ply < MAX_KILLER_PLY) ? killers[ply][1] : null;
@@ -823,20 +1002,111 @@ public class CircusSearchBot extends AbstractBot {
         return scored;
     }
 
-    // ------------------------------------------------------------------ Iterative-Deepening Expectimax / Alpha-Beta
+    private static boolean isDeterministicAction(ArenaEngine engine, Action act) {
+        if ("PASS".equals(act.kind) || "MOVE".equals(act.kind)) return true;
+        if (!"SKILL".equals(act.kind)) return false;
+        UnitState actor = engine.findUnit(act.actorUid);
+        if (actor == null) return false;
+        SkillDef sdef = actor.heroDef.getSkill(act.skillId);
+        if (sdef == null) return false;
+        if (sdef.isTransform) return true;
+        if (!"enemy".equals(sdef.targetTeam)) {
+            if (sdef.randomTarget) return false;
+            if (sdef.healMax > sdef.healMin) return false;
+            if (sdef.selfHealMax > sdef.selfHealMin) return false;
+            if (sdef.stressHeal > 0 && sdef.stressHealChance < 100) return false;
+            return true;
+        }
+        return false;
+    }
+
+    private double evalSingleOutcome(
+            ArenaEngine engine, Action act, int depth, int ply,
+            double alpha, double beta, int myTeam, long seed, int outcomeMode
+    ) {
+        ArenaEngine sim = engine.cloneForSearch(simulationScratch);
+        sim.rng.reseed(seed);
+        sim.searchOutcomeMode = outcomeMode;
+        sim.step(act);
+        // Free action (e.g. Abomination Transform) does not end the turn: keep search depth so follow-up is evaluated!
+        int nextDepth = (sim.state.lockedActorUid != null && ply < MAX_KILLER_PLY - 1) ? depth : (depth - 1);
+        return alphabeta(sim, nextDepth, ply + 1, alpha, beta, myTeam);
+    }
+
+    // ------------------------------------------------------------------ Hybrid Exact-Probability Expectimax / Alpha-Beta
     private double simulateExpectedValue(
             ArenaEngine engine, Action act, int depth, int ply,
             double alpha, double beta, int myTeam, int samples
     ) {
+        long baseSeed = (engine.state.turnCount + 1L) * 10007L + (act.hashCode() & 0x7FFFFFFFL);
+
+        // 1. Deterministic actions (MOVE, PASS, Transform, buffs, fixed heals): 1 simulation is 100% exact!
+        if (isDeterministicAction(engine, act)) {
+            return evalSingleOutcome(engine, act, depth, ply, alpha, beta, myTeam, baseSeed, 0);
+        }
+
+        // 2. Single-target attack: exact probability-weighted 2-branch Expectimax!
+        if ("SKILL".equals(act.kind) && act.targetUids.size() == 1) {
+            UnitState actor = engine.findUnit(act.actorUid);
+            UnitState rawT = engine.findUnit(act.targetUids.get(0));
+            if (actor != null && rawT != null && rawT.alive && !rawT.isCorpse) {
+                SkillDef sdef = actor.heroDef.getSkill(act.skillId);
+                if (sdef != null && "enemy".equals(sdef.targetTeam) && !sdef.isAoe && !sdef.randomTarget && sdef.dmgMod > -1.0) {
+                    UnitState t = rawT;
+                    if (!sdef.ignoresGuard && rawT.guardedByUid != null) {
+                        UnitState g = engine.findUnit(rawT.guardedByUid);
+                        if (g != null && g.alive && !g.isCorpse) t = g;
+                    }
+                    if (!t.isCorpse && t.aegisBlocks == 0) {
+                        EffectiveStats astats = engine.computeEffectiveStats(actor, t, sdef.isRanged ? "ranged" : "melee", scratchA);
+                        EffectiveStats tstats = engine.computeEffectiveStats(t, null, "", scratchB);
+                        double pHit = ArenaEngine.clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0) / 100.0;
+
+                        // 2a. Death's Door execution (ply <= 3 or multi-sample): exact pKill * V(kill) + (1 - pKill) * V(survive)
+                        if (t.atDeathsDoor && t.hp <= 0 && (ply <= 3 || samples > 1)) {
+                            double dbBonus = sdef.deathblowBonus + astats.values[StatKey.DEATHBLOW_CHANCE];
+                            if (t.markedRounds > 0 && ("aimed_shot".equals(sdef.id) || "sniper_shot".equals(sdef.id))) dbBonus += 30.0;
+                            if (t.isAfflicted && "bloodlet".equals(sdef.id)) dbBonus += 40.0;
+                            double pDb = ArenaEngine.clamp(100.0 - tstats.values[StatKey.DEATHBLOW_RES] + dbBonus, 5.0, 100.0) / 100.0;
+                            double pKill = pHit * pDb;
+                            if (pKill >= 0.999) {
+                                return evalSingleOutcome(engine, act, depth, ply, alpha, beta, myTeam, baseSeed, 1);
+                            }
+                            if (pKill <= 0.001) {
+                                return evalSingleOutcome(engine, act, depth, ply, alpha, beta, myTeam, baseSeed, 2);
+                            }
+                            double vKill = evalSingleOutcome(engine, act, depth, ply, -1e12, 1e12, myTeam, baseSeed, 1);
+                            if (checkDeadline()) return vKill;
+                            double invP = 1.0 - pKill;
+                            double a2 = Math.max(-1e12, (alpha - pKill * vKill) / invP);
+                            double b2 = Math.min(1e12, (beta - pKill * vKill) / invP);
+                            int survMode = (pHit * (1.0 - pDb) >= (1.0 - pHit)) ? 2 : 3;
+                            double vSurv = evalSingleOutcome(engine, act, depth, ply, a2, b2, myTeam, baseSeed + 7919L, survMode);
+                            return pKill * vKill + invP * vSurv;
+                        }
+
+                        // 2b. Normal single-target attack (root shallow depths OR low-HP DD-setup at root):
+                        // exact pHit * V(expHit) + (1-pHit) * V(miss) with exact Star1 alpha-beta bounds!
+                        if (samples > 1 || (ply == 1 && t.hp <= 15)) {
+                            double vHit = evalSingleOutcome(engine, act, depth, ply, -1e12, 1e12, myTeam, baseSeed, 4);
+                            if (checkDeadline() || pHit >= 0.999) return vHit;
+                            double invP = 1.0 - pHit;
+                            double a2 = Math.max(-1e12, (alpha - pHit * vHit) / invP);
+                            double b2 = Math.min(1e12, (beta - pHit * vHit) / invP);
+                            double vMiss = evalSingleOutcome(engine, act, depth, ply, a2, b2, myTeam, baseSeed + 7919L, 3);
+                            return pHit * vHit + invP * vMiss;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback (AoE / deep plies / random-target skills): fast Monte Carlo sampling
         double total = 0.0;
         int done = 0;
-        long baseSeed = (engine.state.turnCount + 1L) * 10007L + (act.hashCode() & 0x7FFFFFFFL);
         for (int sIdx = 0; sIdx < samples; sIdx++) {
             if (done > 0 && checkDeadline()) break;
-            ArenaEngine sim = engine.cloneForSearch(simulationScratch);
-            sim.rng.reseed(baseSeed + sIdx * 7919L);
-            sim.step(act);
-            double val = alphabeta(sim, depth - 1, ply + 1, alpha, beta, myTeam);
+            double val = evalSingleOutcome(engine, act, depth, ply, alpha, beta, myTeam, baseSeed + sIdx * 7919L, 0);
             total += val;
             done++;
         }
@@ -885,7 +1155,18 @@ public class CircusSearchBot extends AbstractBot {
             for (int i = 0, cn = cands.size(); i < cn; i++) {
                 if (i > 0 && checkDeadline()) break;
                 Action act = cands.get(i).action;
-                double val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                double val;
+                if (i == 0) {
+                    val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                } else {
+                    // Principal Variation Search (PVS) + Late Move Reduction (LMR) for late-ordered moves
+                    boolean lmr = depth >= 3 && i >= 2 && (ttHint == null || !ttHint.equals(act));
+                    int searchDepth = lmr ? (depth - 1) : depth;
+                    val = simulateExpectedValue(engine, act, searchDepth, ply, alpha, alpha + 0.01, myTeam, 1);
+                    if (!timeUp && val > alpha && (lmr || val < beta)) {
+                        val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                    }
+                }
                 if (val > best) {
                     best = val;
                     bestMove = act;
@@ -902,7 +1183,17 @@ public class CircusSearchBot extends AbstractBot {
             for (int i = 0, cn = cands.size(); i < cn; i++) {
                 if (i > 0 && checkDeadline()) break;
                 Action act = cands.get(i).action;
-                double val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                double val;
+                if (i == 0) {
+                    val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                } else {
+                    boolean lmr = depth >= 3 && i >= 2 && (ttHint == null || !ttHint.equals(act));
+                    int searchDepth = lmr ? (depth - 1) : depth;
+                    val = simulateExpectedValue(engine, act, searchDepth, ply, beta - 0.01, beta, myTeam, 1);
+                    if (!timeUp && val < beta && (lmr || val > alpha)) {
+                        val = simulateExpectedValue(engine, act, depth, ply, alpha, beta, myTeam, 1);
+                    }
+                }
                 if (val < best) {
                     best = val;
                     bestMove = act;
@@ -944,19 +1235,29 @@ public class CircusSearchBot extends AbstractBot {
     protected long searchStateHash(ArenaEngine engine) {
         if (!detailedTtHash) return engine.computeStateHash();
         long h = engine.computeStateHash() ^ (engine.state.turnCount * 0x9E3779B97F4A7C15L);
-        for (var team : engine.state.teams) for (UnitState u : team) {
-            h = Long.rotateLeft(h, 11) ^ u.uid.hashCode();
-            h = h * 31 + u.skillUses.hashCode();
-            h = h * 31 + u.skillCooldowns.hashCode();
-            h = h * 31 + (u.guardingUid == null ? 0 : u.guardingUid.hashCode());
-            h = h * 31 + (u.guardedByUid == null ? 0 : u.guardedByUid.hashCode());
-            h = h * 31 + (u.traitId == null ? 0 : u.traitId.hashCode());
-            h = h * 31 + u.corpseRounds + u.freshStatusMask * 17L;
-            for (ActiveBuff b : u.buffs) {
-                h = Long.rotateLeft(h, 9) ^ Double.doubleToLongBits(b.value);
-                h = h * 31 + b.statId + b.condBit * 17L + b.roundsLeft * 127L + (b.freshThisTurn ? 1 : 0);
+        for (int t = 0; t < 2; t++) {
+            ArrayList<UnitState> team = engine.state.teams[t];
+            for (int ui = 0, un = team.size(); ui < un; ui++) {
+                UnitState u = team.get(ui);
+                h = Long.rotateLeft(h, 11) ^ u.uid.hashCode();
+                if (!u.skillUses.isEmpty()) h = h * 31 + u.skillUses.hashCode();
+                if (!u.skillCooldowns.isEmpty()) h = h * 31 + u.skillCooldowns.hashCode();
+                if (u.guardingUid != null) h = h * 31 + u.guardingUid.hashCode();
+                if (u.guardedByUid != null) h = h * 31 + u.guardedByUid.hashCode();
+                if (u.traitId != null) h = h * 31 + u.traitId.hashCode();
+                h = h * 31 + u.corpseRounds + u.freshStatusMask * 17L;
+                ArrayList<ActiveBuff> buffs = u.buffs;
+                for (int bi = 0, bn = buffs.size(); bi < bn; bi++) {
+                    ActiveBuff b = buffs.get(bi);
+                    h = Long.rotateLeft(h, 9) ^ Double.doubleToLongBits(b.value);
+                    h = h * 31 + b.statId + b.condBit * 17L + b.roundsLeft * 127L + (b.freshThisTurn ? 1 : 0);
+                }
+                ArrayList<ActiveDot> dots = u.dots;
+                for (int di = 0, dn = dots.size(); di < dn; di++) {
+                    ActiveDot d = dots.get(di);
+                    h = Long.rotateLeft(h, 7) ^ (d.kind + d.amount * 31L + d.roundsLeft * 997L);
+                }
             }
-            for (ActiveDot d : u.dots) h = Long.rotateLeft(h, 7) ^ (d.kind + d.amount * 31L + d.roundsLeft * 997L);
         }
         return h;
     }
@@ -1009,7 +1310,8 @@ public class CircusSearchBot extends AbstractBot {
             double iterBestVal = -1e12;
             double alpha = -1e12;
             boolean completedAll = true;
-            int rootSamples = (depth == 1) ? 5 : (depth == 2 ? 3 : (depth == 3 ? 2 : 1));
+            int rootSamples = (depth == 1) ? 3 : (depth == 2 ? 2 : 1);
+            double priorW = (depth == 1) ? 0.25 : (depth == 2 ? 0.12 : 0.04);
 
             for (int idx = 0, rn = rootMoves.size(); idx < rn; idx++) {
                 if (System.nanoTime() >= deadlineNs) {
@@ -1019,8 +1321,18 @@ public class CircusSearchBot extends AbstractBot {
                 }
                 Action act = rootMoves.get(idx).action;
                 double priorSc = priorMap.get(act);
-                double treeVal = simulateExpectedValue(engine, act, depth, 1, alpha - priorSc * 0.35, 1e12, myTeam, rootSamples);
-                double combined = treeVal + priorSc * 0.35;
+                double adjAlpha = alpha - priorSc * priorW;
+                double treeVal;
+                if (idx == 0 || depth <= 2) {
+                    treeVal = simulateExpectedValue(engine, act, depth, 1, adjAlpha, 1e12, myTeam, rootSamples);
+                } else {
+                    // Root PVS: verify non-PV moves with null window first
+                    treeVal = simulateExpectedValue(engine, act, depth, 1, adjAlpha, adjAlpha + 0.01, myTeam, rootSamples);
+                    if (!timeUp && treeVal > adjAlpha) {
+                        treeVal = simulateExpectedValue(engine, act, depth, 1, adjAlpha, 1e12, myTeam, rootSamples);
+                    }
+                }
+                double combined = treeVal + priorSc * priorW;
                 lastIterScore.put(act, combined);
                 if (combined > iterBestVal) {
                     iterBestVal = combined;

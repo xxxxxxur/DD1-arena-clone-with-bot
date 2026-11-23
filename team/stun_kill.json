@@ -7,10 +7,11 @@
   "bot_options": {
     "profile": "stun_kill",
     "time_budget": 0.25,
-    "max_depth": 10,
+    "max_depth": 14,
     "root_width": 10,
     "branch_width": 4,
     "detailed_tt_hash": true,
+    "formation_weight": 1.0,
     "kill_weight": 1.15,
     "survival_weight": 1.0,
     "damage_weight": 1.08,
