@@ -28,6 +28,13 @@ public final class FmodAudioExtractor {
     private static volatile FmodAudioExtractor INSTANCE;
 
     private static final int FMOD_VERSION_20314 = 0x0002030E;
+    private static final int[] FMOD_VERSION_CANDIDATES = {
+            FMOD_VERSION_20314,
+            0x00020300,
+            0x00020200,
+            0x00020100,
+            0x00020000
+    };
     private static final int FMOD_OUTPUTTYPE_NOSOUND = 2;
     private static final int FMOD_OUTPUTTYPE_WAVWRITER_NRT = 5;
     private static final int FMOD_CREATESAMPLE = 0x00000002;
@@ -171,6 +178,7 @@ public final class FmodAudioExtractor {
 
     private NativeFmod fmod;
     private MemorySegment systemPtr;
+    private int activeFmodVersion = FMOD_VERSION_20314;
 
     private final Map<String, Path> banks = new LinkedHashMap<>();
     private final Map<String, List<String>> sampleNameCache = new ConcurrentHashMap<>();
@@ -231,25 +239,61 @@ public final class FmodAudioExtractor {
         }
     }
 
+    private MemorySegment createFmodSystemLocked(Arena scratch) throws Throwable {
+        MemorySegment outSys = scratch.allocate(ValueLayout.ADDRESS);
+        int lastErr = -1;
+        // Try cached active version first, then fall back across supported FMOD 2.x minor versions
+        int r0 = (int) fmod.systemCreate.invokeExact(outSys, activeFmodVersion);
+        if (r0 == 0) {
+            return outSys.get(ValueLayout.ADDRESS, 0);
+        }
+        lastErr = r0;
+        for (int ver : FMOD_VERSION_CANDIDATES) {
+            if (ver == activeFmodVersion) continue;
+            int r = (int) fmod.systemCreate.invokeExact(outSys, ver);
+            if (r == 0) {
+                activeFmodVersion = ver;
+                return outSys.get(ValueLayout.ADDRESS, 0);
+            }
+            lastErr = r;
+        }
+        System.err.println("[FMOD] FMOD_System_Create failed for " + fmodDll + " (last FMOD_RESULT=" + lastErr + ")");
+        return null;
+    }
+
     private boolean ensureFmodLocked() {
         if (systemPtr != null) return true;
-        if (!Files.isRegularFile(fmodDll)) return false;
+        if (!Files.isRegularFile(fmodDll)) {
+            System.err.println("[FMOD] Library not found: " + fmodDll);
+            return false;
+        }
         try {
             if (fmod == null) {
                 fmod = new NativeFmod(fmodDll);
             }
             try (Arena scratch = Arena.ofConfined()) {
-                MemorySegment outSys = scratch.allocate(ValueLayout.ADDRESS);
-                int r1 = (int) fmod.systemCreate.invokeExact(outSys, FMOD_VERSION_20314);
-                if (r1 != 0) return false;
-                MemorySegment sys = outSys.get(ValueLayout.ADDRESS, 0);
+                MemorySegment sys = createFmodSystemLocked(scratch);
+                if (sys == null) return false;
                 int r2 = (int) fmod.systemSetOutput.invokeExact(sys, FMOD_OUTPUTTYPE_NOSOUND);
-                if (r2 != 0) return false;
+                if (r2 != 0) {
+                    System.err.println("[FMOD] FMOD_System_SetOutput(NOSOUND) failed: FMOD_RESULT=" + r2);
+                    return false;
+                }
                 int r3 = (int) fmod.systemInit.invokeExact(sys, 32, 0, MemorySegment.NULL);
-                if (r3 != 0) return false;
+                if (r3 != 0) {
+                    System.err.println("[FMOD] FMOD_System_Init failed: FMOD_RESULT=" + r3);
+                    return false;
+                }
                 this.systemPtr = sys;
                 return true;
             }
+        } catch (UnsatisfiedLinkError ule) {
+            System.err.println("[FMOD] Failed to load native library " + fmodDll + ": " + ule.getMessage());
+            if (Config.isMac() && "aarch64".equals(System.getProperty("os.arch"))) {
+                System.err.println("[FMOD] Hint: Darkest Dungeon's macOS libfmod.dylib is x86_64. "
+                        + "Run with an x86_64 JDK under Rosetta or set DD_FMOD_LIB to an arm64 libfmod.dylib.");
+            }
+            return false;
         } catch (Throwable t) {
             System.err.println("[FMOD] Failed to initialize " + fmodDll + ": " + t.getMessage());
             return false;
@@ -561,13 +605,12 @@ public final class FmodAudioExtractor {
                 if (fsbIdx < 0) return null;
                 int fsbLen = bankBytes.length - fsbIdx;
 
-                MemorySegment outSys = a.allocate(ValueLayout.ADDRESS);
-                if ((int) fmod.systemCreate.invokeExact(outSys, FMOD_VERSION_20314) != 0) return null;
-                mixSys = outSys.get(ValueLayout.ADDRESS, 0);
+                mixSys = createFmodSystemLocked(a);
+                if (mixSys == null) return null;
 
                 if ((int) fmod.systemSetOutput.invokeExact(mixSys, FMOD_OUTPUTTYPE_WAVWRITER_NRT) != 0) return null;
 
-                MemorySegment wavPathC = a.allocateFrom(tmpWav.toAbsolutePath().toString(), StandardCharsets.US_ASCII);
+                MemorySegment wavPathC = a.allocateFrom(tmpWav.toAbsolutePath().toString(), StandardCharsets.UTF_8);
                 if ((int) fmod.systemInit.invokeExact(mixSys, 32, 0, wavPathC) != 0) return null;
 
                 MemorySegment fsbBuf = a.allocate(fsbLen);

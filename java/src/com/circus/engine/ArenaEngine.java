@@ -112,6 +112,18 @@ public final class ArenaEngine {
         return val < lo ? lo : (val > hi ? hi : val);
     }
 
+    /**
+     * Hit chance (%) = (ACC - DODGE) + 5%.
+     * If (ACC - DODGE) < 5%, hit chance is 5%.
+     * If (ACC - DODGE) > 95% (or >= 95%), hit chance is 100%.
+     */
+    public static double computeHitChance(double acc, double dodge) {
+        double diff = acc - dodge;
+        if (diff < 5.0) return 5.0;
+        if (diff >= 95.0) return 100.0;
+        return diff + 5.0;
+    }
+
     /** Matches Python 3 built-in round() (round-half-to-even). */
     public static int pyRound(double v) {
         return (int) Math.rint(v);
@@ -1254,7 +1266,7 @@ public final class ArenaEngine {
         EffectiveStats tstats = computeEffectiveStats(target, null, "", scratchStatsB);
 
         double hitChance = target.isCorpse ? 100.0
-                : clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0);
+                : computeHitChance(sdef.acc + astats.values[StatKey.ACC], tstats.values[StatKey.DODGE]);
 
         int mode = this.searchOutcomeMode;
         boolean missed = (mode == 3) || (mode == 0 && rng.nextDouble() * 100.0 >= hitChance);
@@ -1621,7 +1633,7 @@ public final class ArenaEngine {
                     "actor_uid", responder.uid, "target_uid", attacker.uid, "hero_id", responder.heroId
             )));
         }
-        double hitChance = clamp(hdef.riposteAcc + rstats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0);
+        double hitChance = computeHitChance(hdef.riposteAcc + rstats.values[StatKey.ACC], tstats.values[StatKey.DODGE]);
         if (rng.nextDouble() * 100.0 >= hitChance) {
             if (events != null) {
                 events.add(new CombatEvent("MISS", mapOf(

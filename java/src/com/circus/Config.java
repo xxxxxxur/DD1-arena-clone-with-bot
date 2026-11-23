@@ -130,20 +130,24 @@ public final class Config {
             return gameDir.resolve("_windows").resolve("win64").resolve("fmod.dll");
         }
         if (isMac()) {
-            List<Path> candidates = new ArrayList<>();
+            Set<Path> candidates = new LinkedHashSet<>();
+            candidates.add(gameDir.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("MacOS").resolve("libfmod.dylib"));
+            candidates.add(gameDir.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("Frameworks").resolve("libfmod.dylib"));
             candidates.add(gameDir.resolve("Darkest.app").resolve("Contents").resolve("MacOS").resolve("libfmod.dylib"));
             candidates.add(gameDir.resolve("Darkest.app").resolve("Contents").resolve("Frameworks").resolve("libfmod.dylib"));
-            if (gameDir.getParent() != null) {
-                // When gameDir is .../Darkest.app/Contents/Resources
-                candidates.add(gameDir.getParent().resolve("MacOS").resolve("libfmod.dylib"));
-                candidates.add(gameDir.getParent().resolve("Frameworks").resolve("libfmod.dylib"));
+            // Walk up ancestors to handle .../Darkest.app/Contents/Resources/data and .../Contents/Resources
+            Path anc = gameDir;
+            for (int depth = 0; depth < 4 && anc != null; depth++) {
+                candidates.add(anc.resolve("MacOS").resolve("libfmod.dylib"));
+                candidates.add(anc.resolve("Frameworks").resolve("libfmod.dylib"));
+                anc = anc.getParent();
             }
             candidates.add(gameDir.resolve("_osx").resolve("libfmod.dylib"));
             candidates.add(gameDir.resolve("libfmod.dylib"));
             for (Path c : candidates) {
                 if (Files.isRegularFile(c)) return c;
             }
-            return candidates.get(0);
+            return candidates.iterator().next();
         }
         List<Path> linuxCandidates = List.of(
                 gameDir.resolve("_linux").resolve("lib64").resolve("libfmod.so"),
@@ -177,10 +181,19 @@ public final class Config {
             }
         }
         if (!isValidBaseGameDir(norm)) {
-            Path appResources = norm.resolve("Darkest.app").resolve("Contents").resolve("Resources");
-            if (isValidBaseGameDir(appResources)) return appResources;
-            Path bundleResources = norm.resolve("Contents").resolve("Resources");
-            if (isValidBaseGameDir(bundleResources)) return bundleResources;
+            Path[] nested = {
+                    norm.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("Resources").resolve("data"),
+                    norm.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("Resources"),
+                    norm.resolve("Darkest.app").resolve("Contents").resolve("Resources").resolve("data"),
+                    norm.resolve("Darkest.app").resolve("Contents").resolve("Resources"),
+                    norm.resolve("Contents").resolve("Resources").resolve("data"),
+                    norm.resolve("Contents").resolve("Resources"),
+                    norm.resolve("Resources").resolve("data"),
+                    norm.resolve("data")
+            };
+            for (Path p : nested) {
+                if (isValidBaseGameDir(p)) return p;
+            }
         }
         return norm;
     }
@@ -299,6 +312,9 @@ public final class Config {
             Path dd = libRoot.resolve("steamapps").resolve("common").resolve("DarkestDungeon");
             candidates.add(dd);
             if (isMac()) {
+                candidates.add(dd.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("Resources").resolve("data"));
+                candidates.add(dd.resolve("_osx").resolve("Darkest.app").resolve("Contents").resolve("Resources"));
+                candidates.add(dd.resolve("Darkest.app").resolve("Contents").resolve("Resources").resolve("data"));
                 candidates.add(dd.resolve("Darkest.app").resolve("Contents").resolve("Resources"));
             }
         }
@@ -608,11 +624,11 @@ public final class Config {
         return result.get();
     }
 
-    private static boolean isWindows() {
+    public static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
-    private static boolean isMac() {
+    public static boolean isMac() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         return os.contains("mac") || os.contains("darwin");
     }

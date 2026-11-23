@@ -72,6 +72,7 @@ public final class CircusTestSuite {
         System.out.println("=== Darkest Dungeon: The Butcher's Circus Java 26 Verification Suite ===");
 
         runTest("test_18_heroes_126_skills_103_trinkets", CircusTestSuite::testDataCounts);
+        runTest("test_hit_chance_formula_and_guaranteed_hit", CircusTestSuite::testHitChanceFormula);
         runTest("test_alternating_turns_and_round_initiative", CircusTestSuite::testAlternatingTurns);
         runTest("test_arena_exclusives_and_conditional_trinket_damage", CircusTestSuite::testConditionalTrinkets);
         runTest("test_stygian_embrace_from_legacy_loadout", CircusTestSuite::testStygianEmbrace);
@@ -97,6 +98,41 @@ public final class CircusTestSuite {
     private static TeamConfig[] sampleTeams() {
         List<PresetDef> presets = GameData.get().getPresets();
         return new TeamConfig[]{presets.get(0).team.copy(), presets.get(1).team.copy()};
+    }
+
+    private static void testHitChanceFormula() {
+        checkClose(5.0, ArenaEngine.computeHitChance(0.0, 20.0), 1e-9, "diff=-20 -> 5%");
+        checkClose(5.0, ArenaEngine.computeHitChance(10.0, 10.0), 1e-9, "diff=0 -> 5%");
+        checkClose(5.0, ArenaEngine.computeHitChance(14.9, 10.0), 1e-9, "diff=4.9 -> 5%");
+        checkClose(10.0, ArenaEngine.computeHitChance(15.0, 10.0), 1e-9, "diff=5 -> 10%");
+        checkClose(55.0, ArenaEngine.computeHitChance(85.0, 35.0), 1e-9, "diff=50 -> 55%");
+        checkClose(99.0, ArenaEngine.computeHitChance(104.0, 10.0), 1e-9, "diff=94 -> 99%");
+        checkClose(100.0, ArenaEngine.computeHitChance(105.0, 10.0), 1e-9, "diff=95 -> 100%");
+        checkClose(100.0, ArenaEngine.computeHitChance(140.0, 10.0), 1e-9, "diff=130 -> 100%");
+
+        // Verify engine attack with ACC - DODGE >= 95 never misses across 200 seeds
+        TeamConfig[] teams = sampleTeams();
+        for (int seed = 1; seed <= 200; seed++) {
+            ArenaEngine eng = new ArenaEngine(teams[0], teams[1], seed);
+            Action attack = null;
+            for (Action a : eng.getLegalActions()) {
+                if ("SKILL".equals(a.kind) && a.targetUids.size() == 1) {
+                    UnitState actor = eng.findUnit(a.actorUid);
+                    UnitState target = eng.findUnit(a.targetUids.get(0));
+                    SkillDef sdef = actor.heroDef.getSkill(a.skillId);
+                    if (sdef != null && "enemy".equals(sdef.targetTeam) && !sdef.isAoe && !sdef.randomTarget && sdef.dmgMod > -1.0 && target != null) {
+                        actor.buffs.add(new ActiveBuff(StatKey.ACC, 0, "acc", 100.0, 3, "test_acc", false, true));
+                        target.aegisBlocks = 0;
+                        attack = a;
+                        break;
+                    }
+                }
+            }
+            check(attack != null, "found single-target attack");
+            List<CombatEvent> evs = eng.step(attack);
+            boolean missed = evs.stream().anyMatch(e -> "MISS".equals(e.type));
+            check(!missed, "guaranteed hit should never miss on seed " + seed);
+        }
     }
 
     private static void testDataCounts() {

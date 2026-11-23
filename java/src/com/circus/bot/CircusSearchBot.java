@@ -569,7 +569,7 @@ public class CircusSearchBot extends AbstractBot {
                 EffectiveStats tstats = cachedEnemyStats(engine, t);
 
                 double valW = heroValueWeight(t);
-                double pHit = ArenaEngine.clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0) / 100.0;
+                double pHit = ArenaEngine.computeHitChance(sdef.acc + astats.values[StatKey.ACC], tstats.values[StatKey.DODGE]) / 100.0;
 
                 boolean isBleed = t.hasDotKind(Models.DOT_BLEED);
                 boolean isBlight = t.hasDotKind(Models.DOT_BLIGHT);
@@ -1060,7 +1060,7 @@ public class CircusSearchBot extends AbstractBot {
                     if (!t.isCorpse && t.aegisBlocks == 0) {
                         EffectiveStats astats = engine.computeEffectiveStats(actor, t, sdef.isRanged ? "ranged" : "melee", scratchA);
                         EffectiveStats tstats = engine.computeEffectiveStats(t, null, "", scratchB);
-                        double pHit = ArenaEngine.clamp(sdef.acc + astats.values[StatKey.ACC] - tstats.values[StatKey.DODGE] + 5.0, 5.0, 95.0) / 100.0;
+                        double pHit = ArenaEngine.computeHitChance(sdef.acc + astats.values[StatKey.ACC], tstats.values[StatKey.DODGE]) / 100.0;
 
                         // 2a. Death's Door execution (ply <= 3 or multi-sample): exact pKill * V(kill) + (1 - pKill) * V(survive)
                         if (t.atDeathsDoor && t.hp <= 0 && (ply <= 3 || samples > 1)) {

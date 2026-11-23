@@ -173,7 +173,7 @@ public class TacticalBot extends AbstractBot {
             if (t == null || !Json.boolVal(t, "alive", false)) continue;
             if (Json.boolVal(t, "is_corpse", false)) { score += 4.0; continue; }
             Map<String, Object> tstats = (Map<String, Object>) t.get("stats");
-            double hitProb = ArenaEngine.clamp((sdef.acc + Json.dblVal(astats, "acc", 0) - Json.dblVal(tstats, "dodge", 0) + 5.0) / 100.0, 0.05, 0.95);
+            double hitProb = ArenaEngine.computeHitChance(sdef.acc + Json.dblVal(astats, "acc", 0), Json.dblVal(tstats, "dodge", 0)) / 100.0;
             boolean dd = Json.boolVal(t, "at_deaths_door", false);
             int thp = Json.intVal(t, "hp", 0);
             int tmaxHp = Math.max(1, Json.intVal(t, "max_hp", 1));
