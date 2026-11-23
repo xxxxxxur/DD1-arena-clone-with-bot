@@ -118,7 +118,42 @@ public final class Config {
         Path normalizedDlc = (dlcDir != null) ? dlcDir.toAbsolutePath().normalize() : defaultDlcDir(normalizedGame);
         DD_GAME_DIR = normalizedGame;
         DD_DLC_DIR = normalizedDlc;
-        FMOD_DLL_PATH = normalizedGame.resolve("_windows").resolve("win64").resolve("fmod.dll");
+        FMOD_DLL_PATH = resolveFmodLibPath(normalizedGame);
+    }
+
+    public static Path resolveFmodLibPath(Path gameDir) {
+        String envFmod = envOrNull("DD_FMOD_LIB");
+        if (envFmod != null) {
+            return Path.of(envFmod).toAbsolutePath().normalize();
+        }
+        if (isWindows()) {
+            return gameDir.resolve("_windows").resolve("win64").resolve("fmod.dll");
+        }
+        if (isMac()) {
+            List<Path> candidates = new ArrayList<>();
+            candidates.add(gameDir.resolve("Darkest.app").resolve("Contents").resolve("MacOS").resolve("libfmod.dylib"));
+            candidates.add(gameDir.resolve("Darkest.app").resolve("Contents").resolve("Frameworks").resolve("libfmod.dylib"));
+            if (gameDir.getParent() != null) {
+                // When gameDir is .../Darkest.app/Contents/Resources
+                candidates.add(gameDir.getParent().resolve("MacOS").resolve("libfmod.dylib"));
+                candidates.add(gameDir.getParent().resolve("Frameworks").resolve("libfmod.dylib"));
+            }
+            candidates.add(gameDir.resolve("_osx").resolve("libfmod.dylib"));
+            candidates.add(gameDir.resolve("libfmod.dylib"));
+            for (Path c : candidates) {
+                if (Files.isRegularFile(c)) return c;
+            }
+            return candidates.get(0);
+        }
+        List<Path> linuxCandidates = List.of(
+                gameDir.resolve("_linux").resolve("lib64").resolve("libfmod.so"),
+                gameDir.resolve("_linux").resolve("libfmod.so"),
+                gameDir.resolve("libfmod.so")
+        );
+        for (Path c : linuxCandidates) {
+            if (Files.isRegularFile(c)) return c;
+        }
+        return linuxCandidates.get(0);
     }
 
     public static Path defaultDlcDir(Path gameDir) {
@@ -126,8 +161,8 @@ public final class Config {
     }
 
     /**
-     * If the user selects the DLC folder (dlc/1117860_arena_mp) instead of the game root,
-     * automatically normalize it back to the DarkestDungeon root directory.
+     * If the user selects the DLC folder (dlc/1117860_arena_mp) or a macOS Darkest.app bundle
+     * instead of the game assets root, automatically normalize it to the root containing heroes/ & dlc/.
      */
     public static Path normalizeGameDir(Path candidate) {
         if (candidate == null) return defaultSteamSuggestionDir();
@@ -140,6 +175,12 @@ public final class Config {
                     && parent.getParent() != null) {
                 return parent.getParent();
             }
+        }
+        if (!isValidBaseGameDir(norm)) {
+            Path appResources = norm.resolve("Darkest.app").resolve("Contents").resolve("Resources");
+            if (isValidBaseGameDir(appResources)) return appResources;
+            Path bundleResources = norm.resolve("Contents").resolve("Resources");
+            if (isValidBaseGameDir(bundleResources)) return bundleResources;
         }
         return norm;
     }
@@ -232,6 +273,9 @@ public final class Config {
         if (isWindows()) {
             return Path.of("C:\\Program Files (x86)\\Steam\\steamapps\\common\\DarkestDungeon");
         }
+        if (isMac()) {
+            return Path.of(System.getProperty("user.home"), "Library", "Application Support", "Steam", "steamapps", "common", "DarkestDungeon");
+        }
         return Path.of(System.getProperty("user.home"), ".steam", "steam", "steamapps", "common", "DarkestDungeon");
     }
 
@@ -252,7 +296,11 @@ public final class Config {
     private static List<Path> findSteamGameCandidates() {
         Set<Path> candidates = new LinkedHashSet<>();
         for (Path libRoot : discoverSteamLibraryRoots()) {
-            candidates.add(libRoot.resolve("steamapps").resolve("common").resolve("DarkestDungeon"));
+            Path dd = libRoot.resolve("steamapps").resolve("common").resolve("DarkestDungeon");
+            candidates.add(dd);
+            if (isMac()) {
+                candidates.add(dd.resolve("Darkest.app").resolve("Contents").resolve("Resources"));
+            }
         }
         return new ArrayList<>(candidates);
     }
@@ -562,6 +610,11 @@ public final class Config {
 
     private static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+    }
+
+    private static boolean isMac() {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        return os.contains("mac") || os.contains("darwin");
     }
 
     private static String envOrNull(String key) {

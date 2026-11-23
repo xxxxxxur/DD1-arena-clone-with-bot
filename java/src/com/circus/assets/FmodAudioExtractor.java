@@ -251,7 +251,7 @@ public final class FmodAudioExtractor {
                 return true;
             }
         } catch (Throwable t) {
-            System.err.println("[FMOD] Failed to initialize fmod.dll: " + t.getMessage());
+            System.err.println("[FMOD] Failed to initialize " + fmodDll + ": " + t.getMessage());
             return false;
         }
     }

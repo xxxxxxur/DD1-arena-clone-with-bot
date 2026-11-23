@@ -76,7 +76,7 @@ public final class Main {
                 bootMs, host, actualPort);
         System.out.println("Game Dir: " + Config.DD_GAME_DIR);
         System.out.println("DLC Dir : " + Config.DD_DLC_DIR);
-        System.out.println("FMOD DLL: " + Config.FMOD_DLL_PATH + " (FFM native + FMOD_OPENMEMORY + LRU bank pool)");
+        System.out.println("FMOD Lib: " + Config.FMOD_DLL_PATH + " (FFM native + FMOD_OPENMEMORY + LRU bank pool)");
         System.out.println("Press Ctrl+C to stop.");
 
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "server-shutdown"));
@@ -141,7 +141,14 @@ public final class Main {
             System.out.println("  " + url);
             if (openReport) {
                 try {
-                    new ProcessBuilder("cmd", "/c", "start", "", url).start();
+                    String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+                    if (os.contains("win")) {
+                        new ProcessBuilder("cmd", "/c", "start", "", url).start();
+                    } else if (os.contains("mac") || os.contains("darwin")) {
+                        new ProcessBuilder("open", url).start();
+                    } else {
+                        new ProcessBuilder("xdg-open", url).start();
+                    }
                 } catch (Exception ignored) {}
             }
         }

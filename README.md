@@ -39,13 +39,18 @@
 
 ### 1. 首次启动与游戏目录自动检测
 
-直接运行启动脚本（如未编译会自动执行 `build.ps1`）：
+直接运行启动脚本（如未编译会自动执行编译脚本）：
 
 ```powershell
 # Windows 双击或命令行运行
 .\run_server.bat
 # 或使用 PowerShell
 .\run_server.ps1
+```
+
+```bash
+# macOS / Linux
+./run_server.sh
 ```
 
 启动时程序会按以下优先级自动定位《暗黑地牢》安装目录（**优先 Steam 位置**）：
@@ -56,8 +61,14 @@
 
 如需随时重新选择游戏目录或手动指定路径：
 ```powershell
+# Windows
 .\run_server.ps1 --select-game-dir
 .\run_server.ps1 --game-dir "D:\Program Files\Steam\steamapps\common\DarkestDungeon"
+```
+```bash
+# macOS
+./run_server.sh --select-game-dir
+./run_server.sh --game-dir "$HOME/Library/Application Support/Steam/steamapps/common/DarkestDungeon"
 ```
 
 启动成功后打开浏览器访问：<http://127.0.0.1:8765>
@@ -65,11 +76,17 @@
 ### 2. 纯无头大规模 Bot 锦标赛（CLI）
 
 ```powershell
-# 运行内置队伍循环赛（每对 30 局）并保存 2 份录像
+# Windows：运行内置队伍循环赛（每对 30 局）并保存 2 份录像
 .\run_tournament.bat --bots direct_kill,stun_kill,iron_wall --matches 30 --workers 4 --replays 2
 
 # 完成后自动打开可视化锦标赛报告（需服务器运行中）
 .\run_tournament.bat --bots random,tactical,stress --matches 40 --workers 4 --open
+```
+
+```bash
+# macOS / Linux
+./run_tournament.sh --bots direct_kill,stun_kill,iron_wall --matches 30 --workers 4 --replays 2
+./run_tournament.sh --bots random,tactical,stress --matches 40 --workers 4 --open
 ```
 
 生成的录像保存在 `replays/`，锦标赛报告保存在 `tournaments/`，均可在网页大厅中一键查看与回放。
@@ -77,7 +94,7 @@
 ### 3. 手动编译与运行测试
 
 ```powershell
-# 编译主程序、自定义 Bot 与测试套件
+# Windows：编译主程序、自定义 Bot 与测试套件
 .\build.bat
 
 # 运行完整测试套件
@@ -86,6 +103,14 @@ java --enable-native-access=ALL-UNNAMED -cp "java/out;java/out-test" com.circus.
 # 运行性能与防御 Bot 专项回归测试
 java -Xmx512m -cp "java/out;java/out-test" com.circus.FortressBotTest
 java -Xmx512m -cp "java/out;java/out-test" com.circus.TournamentPerformanceTest
+```
+
+```bash
+# macOS / Linux：编译主程序、自定义 Bot 与测试套件
+./build.sh
+
+# 运行完整测试套件（注意 macOS / Linux 类路径分隔符为 :）
+java --enable-native-access=ALL-UNNAMED -cp "java/out:java/out-test" com.circus.CircusTestSuite
 ```
 
 ### 4. 编写自定义 Bot 与队伍
@@ -110,9 +135,9 @@ java -Xmx512m -cp "java/out;java/out-test" com.circus.TournamentPerformanceTest
 ├── benchmarks/          # 性能优化与防御策略调优文档及基准数据
 ├── replays/             # 运行时生成的对局录像（JSON 已 gitignore）
 ├── tournaments/         # 运行时生成的锦标赛战报（JSON 已 gitignore）
-├── build.ps1 / .bat     # 编译脚本
-├── run_server.ps1 / .bat      # 启动 Web & PvP 服务器
-├── run_tournament.ps1 / .bat  # 启动无头 Bot 锦标赛
+├── build.ps1 / .bat / .sh           # 编译脚本
+├── run_server.ps1 / .bat / .sh      # 启动 Web & PvP 服务器
+├── run_tournament.ps1 / .bat / .sh  # 启动无头 Bot 锦标赛
 ├── BOT_GUIDE.md         # Bot 开发指南与引擎 API 文档
 └── LICENSE              # MIT License
 ```
