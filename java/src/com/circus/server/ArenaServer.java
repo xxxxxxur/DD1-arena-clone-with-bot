@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -30,7 +31,51 @@ import java.util.stream.Stream;
 public final class ArenaServer {
     private static final Map<String, String> CACHE_1DAY = Map.of("Cache-Control", "public, max-age=86400");
 
+    private static final class TournamentJob {
+        final String jobId;
+        final int total;
+        final boolean mirror;
+        final long startNs = System.nanoTime();
+        volatile int completed = 0;
+        volatile double elapsedSec = 0.0;
+        volatile String status = "running"; // running | done | error
+        volatile Map<String, Object> result;
+        volatile String error;
+
+        TournamentJob(String jobId, int total, boolean mirror) {
+            this.jobId = jobId;
+            this.total = total;
+            this.mirror = mirror;
+        }
+
+        Map<String, Object> toStatusMap() {
+            int done = completed;
+            int tot = Math.max(1, total);
+            double elapsed = "running".equals(status)
+                    ? (System.nanoTime() - startNs) / 1_000_000_000.0
+                    : elapsedSec;
+            double pct = Math.min(100.0, Math.rint((1000.0 * done) / tot) / 10.0);
+            Double eta = null;
+            if ("done".equals(status)) eta = 0.0;
+            else if (done > 0 && done < total) eta = Math.rint(((elapsed * (total - done)) / done) * 10.0) / 10.0;
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("job_id", jobId);
+            m.put("status", status);
+            m.put("completed", done);
+            m.put("total", total);
+            m.put("pct", pct);
+            m.put("mirror", mirror);
+            m.put("elapsed_sec", Math.rint(elapsed * 100.0) / 100.0);
+            m.put("eta_sec", eta);
+            if (result != null) m.put("result", result);
+            if (error != null) m.put("error", error);
+            return m;
+        }
+    }
+
     private final HttpWsServer server;
+    private final Map<String, TournamentJob> tournamentJobs = new ConcurrentHashMap<>();
     private volatile byte[] cachedBootstrapBytes;
 
     public ArenaServer(String host, int port) {
@@ -274,6 +319,22 @@ public final class ArenaServer {
             return;
         }
 
+        if ("/api/tournament/start".equals(path) && "POST".equals(req.method)) {
+            handleStartTournamentAsync(req, res);
+            return;
+        }
+
+        if (path.startsWith("/api/tournament/status/")) {
+            String jobId = path.substring("/api/tournament/status/".length()).trim();
+            TournamentJob job = tournamentJobs.get(jobId);
+            if (job == null) {
+                res.sendJson(404, Map.of("error", "Tournament job not found"));
+            } else {
+                res.sendJson(200, job.toStatusMap());
+            }
+            return;
+        }
+
         // Asset Bridge Endpoints
         AssetResolver resolver = AssetResolver.get();
 
@@ -487,9 +548,20 @@ public final class ArenaServer {
         res.sendJson(200, Map.of("tournaments", items));
     }
 
+    private record ParsedTournamentRequest(
+            List<Simulator.BotSpec> specs,
+            int matchesPerPair,
+            int workers,
+            long seed,
+            int maxRounds,
+            int saveReplays,
+            Double timeBudget,
+            int totalMatches,
+            boolean mirror
+    ) {}
+
     @SuppressWarnings("unchecked")
-    private void handleRunTournament(HttpRequest req, HttpResponse res) throws IOException {
-        Map<String, Object> body = req.bodyJson();
+    private ParsedTournamentRequest parseTournamentRequest(Map<String, Object> body) {
         List<Object> rawBots = Json.listVal(body, "bots");
         if (rawBots.isEmpty()) {
             rawBots = List.of("direct_kill", "stun_kill", "iron_wall", "iron_hound", "shuffle_kill");
@@ -520,15 +592,65 @@ public final class ArenaServer {
                 specs.add(new Simulator.BotSpec(type, preset, botCls));
             }
         }
-        if (specs.size() < 2) {
-            res.sendJson(400, Map.of("error", "Need at least 2 bots"));
+        boolean mirror = specs.size() == 1;
+        int effCount = mirror ? 2 : specs.size();
+        int pairs = effCount >= 2 ? (effCount * (effCount - 1)) / 2 : 0;
+        return new ParsedTournamentRequest(
+                specs, matchesPerPair, workers, seed, maxRounds, saveReplays, timeBudget, pairs * matchesPerPair, mirror
+        );
+    }
+
+    private void handleRunTournament(HttpRequest req, HttpResponse res) throws IOException {
+        ParsedTournamentRequest pr = parseTournamentRequest(req.bodyJson());
+        if (pr.specs.isEmpty()) {
+            res.sendJson(400, Map.of("error", "Need at least 1 bot/team"));
             return;
         }
 
         Simulator.TournamentReport report = Simulator.runTournament(
-                specs, matchesPerPair, workers, seed, maxRounds, saveReplays, Config.REPLAY_DIR, timeBudget
+                pr.specs, pr.matchesPerPair, pr.workers, pr.seed, pr.maxRounds, pr.saveReplays, Config.REPLAY_DIR, pr.timeBudget
         );
         res.sendJson(200, report.toApiMap());
+    }
+
+    private void handleStartTournamentAsync(HttpRequest req, HttpResponse res) throws IOException {
+        ParsedTournamentRequest pr = parseTournamentRequest(req.bodyJson());
+        if (pr.specs.isEmpty()) {
+            res.sendJson(400, Map.of("error", "Need at least 1 bot/team"));
+            return;
+        }
+
+        String jobId = "tjob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        TournamentJob job = new TournamentJob(jobId, pr.totalMatches, pr.mirror);
+        if (tournamentJobs.size() > 32) {
+            tournamentJobs.entrySet().removeIf(e -> !"running".equals(e.getValue().status));
+        }
+        tournamentJobs.put(jobId, job);
+
+        Thread runner = new Thread(() -> {
+            try {
+                Simulator.TournamentReport report = Simulator.runTournament(
+                        pr.specs, pr.matchesPerPair, pr.workers, pr.seed, pr.maxRounds,
+                        pr.saveReplays, Config.REPLAY_DIR, Config.TOURNAMENT_DIR, pr.timeBudget,
+                        (completed, total, elapsedSec) -> {
+                            job.completed = completed;
+                            job.elapsedSec = elapsedSec;
+                        }
+                );
+                job.completed = report.totalMatches();
+                job.elapsedSec = report.elapsedSec();
+                job.result = report.toApiMap();
+                job.status = "done";
+            } catch (Throwable ex) {
+                Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                job.error = cause.getMessage() != null ? cause.getMessage() : cause.toString();
+                job.status = "error";
+            }
+        }, "tournament-job-" + jobId);
+        runner.setDaemon(true);
+        runner.start();
+
+        res.sendJson(200, job.toStatusMap());
     }
 
     private static long parseLongVal(Map<String, Object> m, String key, long def) {

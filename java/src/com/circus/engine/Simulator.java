@@ -16,6 +16,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Headless Butcher's Circus match runner & GIL-free multi-threaded Bot tournament engine
@@ -26,6 +27,11 @@ public final class Simulator {
             .withZone(ZoneId.systemDefault());
 
     private Simulator() {}
+
+    @FunctionalInterface
+    public interface ProgressListener {
+        void onProgress(int completed, int total, double elapsedSec);
+    }
 
     public record BotSpec(String type, String preset, String botClass) {
         public BotSpec(String type, String preset) {
@@ -430,7 +436,7 @@ public final class Simulator {
             Double timeBudgetSec
     ) {
         return runTournament(botSpecs, matchesPerPair, workers, baseSeed, maxRounds,
-                saveReplays, replayDir, Config.TOURNAMENT_DIR, timeBudgetSec);
+                saveReplays, replayDir, Config.TOURNAMENT_DIR, timeBudgetSec, null);
     }
 
     public static TournamentReport runTournament(
@@ -444,30 +450,55 @@ public final class Simulator {
             Path tournamentDir,
             Double timeBudgetSec
     ) {
+        return runTournament(botSpecs, matchesPerPair, workers, baseSeed, maxRounds,
+                saveReplays, replayDir, tournamentDir, timeBudgetSec, null);
+    }
+
+    public static TournamentReport runTournament(
+            List<BotSpec> botSpecs,
+            int matchesPerPair,
+            int workers,
+            long baseSeed,
+            int maxRounds,
+            int saveReplays,
+            Path replayDir,
+            Path tournamentDir,
+            Double timeBudgetSec,
+            ProgressListener progressListener
+    ) {
         // Reload team/*.json so any freshly edited team files take effect immediately
         TeamConfigStore.reload();
+
+        // Single-team specification automatically runs a mirror tournament
+        List<BotSpec> effectiveSpecs = (botSpecs.size() == 1)
+                ? List.of(botSpecs.get(0), botSpecs.get(0))
+                : botSpecs;
 
         long t0 = System.nanoTime();
         Instant now = Instant.now();
         String tourId = "tournament_" + FILE_TS.format(now) + "_" + baseSeed;
 
         record Job(BotSpec a, BotSpec b, String labelA, String labelB, long seed, boolean rec) {}
-        List<String> labels = new ArrayList<>(botSpecs.size());
-        Map<String, Integer> labelCounts = new HashMap<>();
-        for (BotSpec sp : botSpecs) {
+        Map<String, Integer> totalLabelFreq = new HashMap<>();
+        for (BotSpec sp : effectiveSpecs) {
+            totalLabelFreq.merge(sp.displayLabel(), 1, Integer::sum);
+        }
+        List<String> labels = new ArrayList<>(effectiveSpecs.size());
+        Map<String, Integer> labelSeen = new HashMap<>();
+        for (BotSpec sp : effectiveSpecs) {
             String base = sp.displayLabel();
-            int c = labelCounts.merge(base, 1, Integer::sum);
-            labels.add(c == 1 ? base : (base + "#" + c));
+            int idx = labelSeen.merge(base, 1, Integer::sum);
+            labels.add(totalLabelFreq.get(base) > 1 ? (base + "#" + idx) : base);
         }
 
         List<Job> jobs = new ArrayList<>();
         long seedCursor = baseSeed;
         int replayBudget = saveReplays;
 
-        for (int i = 0; i < botSpecs.size(); i++) {
-            for (int j = i + 1; j < botSpecs.size(); j++) {
-                BotSpec s0 = botSpecs.get(i);
-                BotSpec s1 = botSpecs.get(j);
+        for (int i = 0; i < effectiveSpecs.size(); i++) {
+            for (int j = i + 1; j < effectiveSpecs.size(); j++) {
+                BotSpec s0 = effectiveSpecs.get(i);
+                BotSpec s1 = effectiveSpecs.get(j);
                 String l0 = labels.get(i);
                 String l1 = labels.get(j);
                 for (int m = 0; m < matchesPerPair; m++) {
@@ -482,14 +513,27 @@ public final class Simulator {
             }
         }
 
-        List<MatchResult> results = new ArrayList<>(jobs.size());
-        int effWorkers = Math.max(1, Math.min(workers, jobs.size()));
-        if (effWorkers > 1 && jobs.size() > 1) {
+        int totalJobs = jobs.size();
+        AtomicInteger completedCount = new AtomicInteger(0);
+        if (progressListener != null) {
+            progressListener.onProgress(0, totalJobs, 0.0);
+        }
+
+        List<MatchResult> results = new ArrayList<>(totalJobs);
+        int effWorkers = Math.max(1, Math.min(workers, Math.max(1, totalJobs)));
+        if (effWorkers > 1 && totalJobs > 1) {
             ExecutorService pool = Executors.newFixedThreadPool(effWorkers);
             try {
-                List<Future<MatchResult>> futures = new ArrayList<>(jobs.size());
+                List<Future<MatchResult>> futures = new ArrayList<>(totalJobs);
                 for (Job job : jobs) {
-                    futures.add(pool.submit(() -> runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec)));
+                    futures.add(pool.submit(() -> {
+                        MatchResult mr = runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec);
+                        int done = completedCount.incrementAndGet();
+                        if (progressListener != null) {
+                            progressListener.onProgress(done, totalJobs, (System.nanoTime() - t0) / 1_000_000_000.0);
+                        }
+                        return mr;
+                    }));
                 }
                 for (Future<MatchResult> f : futures) {
                     results.add(f.get());
@@ -501,7 +545,12 @@ public final class Simulator {
             }
         } else {
             for (Job job : jobs) {
-                results.add(runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec));
+                MatchResult mr = runJob(job.a, job.b, job.labelA, job.labelB, job.seed, maxRounds, job.rec, timeBudgetSec);
+                results.add(mr);
+                int done = completedCount.incrementAndGet();
+                if (progressListener != null) {
+                    progressListener.onProgress(done, totalJobs, (System.nanoTime() - t0) / 1_000_000_000.0);
+                }
             }
         }
 

@@ -93,18 +93,31 @@ public final class Main {
             if (trimmed.isEmpty()) continue;
             specs.add(Simulator.BotSpec.parse(trimmed));
         }
-        if (specs.size() < 2) {
-            System.err.println("Please provide at least 2 bots via --bots");
+        if (specs.isEmpty()) {
+            System.err.println("Please provide at least 1 bot/team via --bots");
             System.exit(1);
         }
 
+        boolean mirror = specs.size() == 1;
         System.out.println("=== Butcher's Circus Java Headless Tournament ===");
-        System.out.printf("Bots: %s%nMatches/pair: %d | Workers: %d | Seed: %d | Budget: %s%n",
-                specs, matches, workers, seed, budget != null ? (budget + "s") : "default");
+        System.out.printf("Bots: %s%s%nMatches/pair: %d | Workers: %d | Seed: %d | Budget: %s%n",
+                specs, mirror ? " (Mirror Match)" : "",
+                matches, workers, seed, budget != null ? (budget + "s") : "default");
+
+        Object progressLock = new Object();
+        final int[] lastPrinted = {-1};
+        Simulator.ProgressListener cliProgress = (completed, total, elapsedSec) -> {
+            synchronized (progressLock) {
+                if (completed != total && completed == lastPrinted[0]) return;
+                lastPrinted[0] = completed;
+                printCliProgressBar(completed, total, elapsedSec);
+            }
+        };
 
         Simulator.TournamentReport report = Simulator.runTournament(
-                specs, matches, workers, seed, maxRounds, replays, Config.REPLAY_DIR, budget
+                specs, matches, workers, seed, maxRounds, replays, Config.REPLAY_DIR, Config.TOURNAMENT_DIR, budget, cliProgress
         );
+        System.out.println();
 
         System.out.printf("%nCompleted %d matches in %.2fs (%.1f matches/sec)%n",
                 report.totalMatches(), report.elapsedSec(), report.matchesPerSec());
@@ -150,5 +163,28 @@ public final class Main {
                 } catch (Exception ignored) {}
             }
         }
+    }
+
+    private static void printCliProgressBar(int completed, int total, double elapsedSec) {
+        int safeTotal = Math.max(1, total);
+        double ratio = Math.min(1.0, Math.max(0.0, (double) completed / safeTotal));
+        int width = 30;
+        int filled = (int) Math.round(ratio * width);
+        StringBuilder bar = new StringBuilder(width);
+        for (int i = 0; i < width; i++) {
+            bar.append(i < filled ? '#' : '-');
+        }
+        String etaStr;
+        if (completed <= 0) {
+            etaStr = "--";
+        } else if (completed >= total) {
+            etaStr = "0.0s";
+        } else {
+            double eta = elapsedSec * (total - completed) / completed;
+            etaStr = String.format("%.1fs", eta);
+        }
+        System.out.printf("\rProgress [%s] %d/%d (%5.1f%%) | Elapsed: %.1fs | ETA: %s   ",
+                bar, completed, total, ratio * 100.0, elapsedSec, etaStr);
+        System.out.flush();
     }
 }

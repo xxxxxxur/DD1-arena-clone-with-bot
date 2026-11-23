@@ -407,6 +407,39 @@ select, input[type="text"], input[type="number"] {
   gap: 8px;
   flex-wrap: wrap;
 }
+.lab-progress-wrap {
+  background: rgba(12, 8, 8, 0.85);
+  border: 1px solid #4a3525;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lab-progress-wrap.hidden {
+  display: none;
+}
+.lab-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #e6d6b8;
+  font-family: Consolas, monospace;
+}
+.lab-progress-track {
+  width: 100%;
+  height: 12px;
+  background: #1a1111;
+  border: 1px solid #3c2c22;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.lab-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #8b2020, #c8963e);
+  transition: width 0.2s ease-out;
+}
 .lab-team-chip:hover {
   border-color: #8a6b38;
   color: #efe1c4;

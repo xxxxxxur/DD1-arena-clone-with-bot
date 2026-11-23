@@ -20,6 +20,8 @@ public final class ArenaEngine {
     public static final int RESOLVE_CHECK_STRESS = 100;
     public static final int HEART_ATTACK_RESET_STRESS = 170;
     public static final double BASE_VIRTUE_CHANCE = 0.0;
+    public static final String SECOND_TURN_DODGE_SOURCE = "round1_second_dodge";
+    public static final double SECOND_TURN_DODGE_BONUS = 15.0;
 
     public final long seed;
     public final FastRng rng;
@@ -164,6 +166,17 @@ public final class ArenaEngine {
 
         int coinflipWinner = this.rng.nextDouble() < 0.5 ? 0 : 1;
         this.state = new GameState(1, coinflipWinner, coinflipWinner, coinflipWinner, u0, u1, maxRounds, this.seed);
+
+        // Butcher's Circus rule: the team acting second in Round 1 receives +15 DODGE until the end of Round 1.
+        int secondTeam = 1 - coinflipWinner;
+        for (UnitState u : this.state.teams[secondTeam]) {
+            if (u.alive && !u.isCorpse) {
+                u.buffs.add(new ActiveBuff(
+                        StatKey.DODGE, StatKey.COND_NONE, "dodge",
+                        SECOND_TURN_DODGE_BONUS, 1, SECOND_TURN_DODGE_SOURCE, false, false
+                ));
+            }
+        }
 
         this.initEvents = new ArrayList<>(4);
         this.initEvents.add(new CombatEvent("MATCH_START", mapOf(
@@ -1959,7 +1972,7 @@ public final class ArenaEngine {
             int kept = 0;
             for (int i = 0, n = actor.buffs.size(); i < n; i++) {
                 ActiveBuff b = actor.buffs.get(i);
-                if (b.roundsLeft < 0) {
+                if (b.roundsLeft < 0 || SECOND_TURN_DODGE_SOURCE.equals(b.source)) {
                     b.freshThisTurn = false;
                     actor.buffs.set(kept++, b);
                 } else if (b.freshThisTurn) {
@@ -2026,6 +2039,14 @@ public final class ArenaEngine {
     }
 
     private void startNextRound(List<CombatEvent> events, int lastActorTeam) {
+        if (state.roundNum == 1) {
+            for (int t = 0; t < 2; t++) {
+                ArrayList<UnitState> list = state.teams[t];
+                for (int i = 0, n = list.size(); i < n; i++) {
+                    list.get(i).buffs.removeIf(b -> SECOND_TURN_DODGE_SOURCE.equals(b.source));
+                }
+            }
+        }
         for (int t = 0; t < 2; t++) {
             boolean changed = false;
             ArrayList<UnitState> list = state.teams[t];

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Darkest Dungeon: The Butcher's Circus — 屠夫马戏团</title>
-  <link rel="stylesheet" href="/static/css/circus.css?v=6" />
+  <link rel="stylesheet" href="/static/css/circus.css?v=7" />
 </head>
 <body>
   <div id="app">
@@ -176,6 +176,15 @@
                 <button id="btn-run-lab" class="btn-gold">🔥 运行无头锦标赛</button>
                 <button id="btn-open-report" class="btn-crimson hidden">📊 打开完整数据分析报告</button>
                 <button id="btn-report-center" class="btn-mini" onclick="window.open('/static/tournament_report.html','_blank')">📂 历史报告/导入</button>
+              </div>
+            </div>
+            <div id="lab-progress-wrap" class="lab-progress-wrap hidden">
+              <div class="lab-progress-meta">
+                <span id="lab-progress-label">准备中...</span>
+                <span id="lab-progress-stats">0 / 0 (0.0%)</span>
+              </div>
+              <div class="lab-progress-track">
+                <div id="lab-progress-fill" class="lab-progress-fill" style="width: 0%"></div>
               </div>
             </div>
             <div id="lab-output" class="lab-output"></div>
@@ -434,6 +443,6 @@
     </main>
   </div>
 
-  <script type="module" src="/static/js/main.js?v=14"></script>
+  <script type="module" src="/static/js/main.js?v=15"></script>
 </body>
 </html>

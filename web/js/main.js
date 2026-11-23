@@ -202,12 +202,19 @@ function updateTournamentSelectionSummary() {
   const selected = getSelectedTournamentTeams().length;
   const mRaw = parseInt($("lab-matches")?.value, 10);
   const m = Number.isFinite(mRaw) ? Math.max(1, Math.min(1000, mRaw)) : 30;
-  const pairs = selected >= 2 ? (selected * (selected - 1)) / 2 : 0;
+  const pairs = selected === 1 ? 1 : (selected >= 2 ? (selected * (selected - 1)) / 2 : 0);
   const totalMatches = pairs * m;
-  summaryEl.textContent =
-    appState.lang === "zh"
-      ? `已选 ${selected}/${all} 队 · ${pairs} 组对阵 · 共 ${totalMatches} 局`
-      : `${selected}/${all} selected · ${pairs} pairs · ${totalMatches} matches`;
+  if (selected === 1) {
+    summaryEl.textContent =
+      appState.lang === "zh"
+        ? `已选 1/${all} 队 · 镜像对阵 · 共 ${totalMatches} 局`
+        : `1/${all} selected · Mirror Match · ${totalMatches} matches`;
+  } else {
+    summaryEl.textContent =
+      appState.lang === "zh"
+        ? `已选 ${selected}/${all} 队 · ${pairs} 组对阵 · 共 ${totalMatches} 局`
+        : `${selected}/${all} selected · ${pairs} pairs · ${totalMatches} matches`;
+  }
 }
 
 function populateTournamentTeamPicker(preserveChecked = false) {
@@ -520,17 +527,34 @@ function bindEvents() {
     const btn = $("btn-run-lab");
     const openBtn = $("btn-open-report");
     const out = $("lab-output");
+    const progWrap = $("lab-progress-wrap");
+    const progFill = $("lab-progress-fill");
+    const progLabel = $("lab-progress-label");
+    const progStats = $("lab-progress-stats");
     const selectedSpecs = getSelectedTournamentSpecs();
-    if (selectedSpecs.length < 2) {
-      out.textContent = appState.lang === "zh" ? "请至少选择 2 支参赛队伍！" : "Please select at least 2 teams!";
+    if (selectedSpecs.length < 1) {
+      out.textContent = appState.lang === "zh" ? "请至少选择 1 支参赛队伍（选 1 支将自动进行镜像对打）！" : "Please select at least 1 team (1 team runs a mirror tournament)!";
       return;
     }
+    const isMirror = selectedSpecs.length === 1;
     btn.disabled = true;
     openBtn?.classList.add("hidden");
+    progWrap?.classList.remove("hidden");
+    if (progFill) progFill.style.width = "0%";
+    if (progLabel) {
+      progLabel.textContent = appState.lang === "zh"
+        ? (isMirror ? "⚔ 正在进行镜像锦标赛..." : `⚔ 正在进行锦标赛（${selectedSpecs.length} 支队伍）...`)
+        : (isMirror ? "⚔ Running Mirror Tournament..." : `⚔ Running Tournament (${selectedSpecs.length} teams)...`);
+    }
+    if (progStats) progStats.textContent = "0 / ? (0.0%)";
     out.textContent =
       appState.lang === "zh"
-        ? `正在 Java 26 多线程无头引擎中运行高速锦标赛（${selectedSpecs.length} 支队伍）...`
-        : `Running Java 26 multi-threaded headless tournament (${selectedSpecs.length} teams)...`;
+        ? (isMirror
+            ? "正在 Java 26 多线程无头引擎中运行单队镜像锦标赛..."
+            : `正在 Java 26 多线程无头引擎中运行高速锦标赛（${selectedSpecs.length} 支队伍）...`)
+        : (isMirror
+            ? "Running Java 26 multi-threaded mirror tournament..."
+            : `Running Java 26 multi-threaded headless tournament (${selectedSpecs.length} teams)...`);
     try {
       const mRaw = parseInt($("lab-matches")?.value, 10);
       const matches = Number.isFinite(mRaw) ? Math.max(1, Math.min(1000, mRaw)) : 30;
@@ -560,15 +584,48 @@ function bindEvents() {
       };
       if (timeBudget !== null) payload.time_budget = timeBudget;
 
-      const res = await fetch("/api/tournament", {
+      const startRes = await fetch("/api/tournament/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const r = await res.json();
-      if (!res.ok || r.error) {
-        throw new Error(r.error || `HTTP ${res.status}`);
+      const startData = await startRes.json();
+      if (!startRes.ok || startData.error || !startData.job_id) {
+        throw new Error(startData.error || `HTTP ${startRes.status}`);
       }
+
+      const jobId = startData.job_id;
+      let statusData = startData;
+      while (statusData.status === "running") {
+        const pct = Number(statusData.pct || 0);
+        if (progFill) progFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+        if (progStats) {
+          const etaText = statusData.eta_sec !== null && statusData.eta_sec !== undefined
+            ? ` | ETA ${Number(statusData.eta_sec).toFixed(1)}s`
+            : "";
+          progStats.textContent = `${statusData.completed}/${statusData.total} (${pct.toFixed(1)}%) · ${Number(statusData.elapsed_sec || 0).toFixed(1)}s${etaText}`;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const stRes = await fetch(`/api/tournament/status/${encodeURIComponent(jobId)}`);
+        statusData = await stRes.json();
+        if (!stRes.ok) {
+          throw new Error(statusData.error || `HTTP ${stRes.status}`);
+        }
+      }
+
+      if (statusData.status === "error") {
+        throw new Error(statusData.error || "Tournament failed");
+      }
+
+      const r = statusData.result;
+      if (progFill) progFill.style.width = "100%";
+      if (progLabel) {
+        progLabel.textContent = appState.lang === "zh" ? "✅ 锦标赛已完成" : "✅ Tournament Complete";
+      }
+      if (progStats) {
+        progStats.textContent = `${r.total_matches}/${r.total_matches} (100.0%) · ${r.elapsed_sec}s`;
+      }
+
       let txt = `Matches: ${r.total_matches} in ${r.elapsed_sec}s (${r.matches_per_sec} matches/sec)\n`;
       txt += `Avg Rounds: ${r.avg_rounds} | Deathblows: ${r.deathblow_kills} | Heart Attacks: ${r.heart_attack_kills}\n`;
       if (r.report_file) {
@@ -588,6 +645,7 @@ function bindEvents() {
       }
       refreshReplays();
     } catch (e) {
+      if (progLabel) progLabel.textContent = appState.lang === "zh" ? "❌ 锦标赛失败" : "❌ Tournament Error";
       out.textContent = "Error: " + e.message;
     } finally {
       btn.disabled = false;
