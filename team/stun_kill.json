@@ -6,7 +6,25 @@
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "stun_kill",
-    "time_budget": 0.25
+    "time_budget": 0.25,
+    "max_depth": 10,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "kill_weight": 1.15,
+    "survival_weight": 1.0,
+    "damage_weight": 1.08,
+    "stun_weight": 1.35,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.25,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
   },
   "team": {
     "name": "Heavy Stun Execute",

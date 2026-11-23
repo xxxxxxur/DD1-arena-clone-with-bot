@@ -128,6 +128,17 @@
             </div>
           </div>
           <div class="dialog-body">
+            <div class="lab-team-picker">
+              <div class="lab-team-header">
+                <span>⚔ 参赛队伍 <span id="lab-team-summary" class="lab-team-summary"></span></span>
+                <div class="lab-team-actions">
+                  <button type="button" id="btn-lab-select-all" class="btn-mini">全选</button>
+                  <button type="button" id="btn-lab-select-classic" class="btn-mini">经典5队</button>
+                  <button type="button" id="btn-lab-clear" class="btn-mini">清空</button>
+                </div>
+              </div>
+              <div id="lab-team-list" class="lab-team-grid"></div>
+            </div>
             <div class="form-row">
               <label>每组对局数</label>
               <input id="lab-matches" type="number" min="2" max="100" value="10" />

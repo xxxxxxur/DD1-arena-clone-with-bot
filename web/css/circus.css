@@ -239,7 +239,8 @@ select, input[type="text"], input[type="number"] {
     url("/api/game_asset/campaign/town/buildings/dueling_grounds/dueling_grounds.character_background.png") center/cover;
 }
 .dialog-rankings {
-  width: 650px;
+  width: 720px;
+  max-width: 94vw;
   background:
     linear-gradient(180deg, rgba(24, 14, 14, 0.93), rgba(14, 9, 9, 0.97)),
     url("/api/game_asset/campaign/town/buildings/rankings/rankings.character_background.png") center/cover;
@@ -282,13 +283,92 @@ select, input[type="text"], input[type="number"] {
 .join-row { display: flex; gap: 8px; }
 .join-row input { flex: 1; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
 
+.lab-team-picker {
+  background: rgba(13, 8, 8, 0.85);
+  border: 1px solid #3c2c22;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lab-team-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--gold);
+  font-weight: 700;
+}
+.lab-team-summary {
+  color: #c8b89f;
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 6px;
+}
+.lab-team-actions {
+  display: flex;
+  gap: 6px;
+}
+.lab-team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 175px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.lab-team-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  background: #170f0f;
+  border: 1px solid #3a2920;
+  cursor: pointer;
+  font-size: 12px;
+  color: #b8a890;
+  user-select: none;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+.lab-team-chip:hover {
+  border-color: #8a6b38;
+  color: #efe1c4;
+}
+.lab-team-chip.checked {
+  background: rgba(92, 54, 24, 0.35);
+  border-color: var(--border-gold);
+  color: #f4e4c2;
+}
+.lab-team-chip input[type="checkbox"] {
+  accent-color: #d4a44c;
+  margin: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.lab-team-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lab-team-cls {
+  font-size: 10.5px;
+  color: #9e8a6c;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #3c2c22;
+  padding: 1px 5px;
+  flex: 0 0 auto;
+}
+
 .lab-output {
   background: #0d0808;
   border: 1px solid #3c2c22;
   padding: 8px;
   font-family: Consolas, monospace;
   font-size: 12px;
-  max-height: 130px;
+  max-height: 185px;
   overflow-y: auto;
   white-space: pre-wrap;
   color: #e0d3b4;

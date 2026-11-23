@@ -116,12 +116,16 @@ public final class Main {
                 report.totalMatches(), report.elapsedSec(), report.matchesPerSec());
         System.out.printf("Avg Rounds: %.2f | Deathblow Kills: %d | Heart Attack Kills: %d%n%n",
                 report.avgRounds(), report.deathblowKills(), report.heartAttackKills());
-        System.out.printf("%-28s %7s %6s %6s %8s%n", "Bot", "ELO", "Wins", "Losses", "WinRate");
-        System.out.println("-".repeat(60));
+        System.out.printf("%-24s %7s %4s %7s %7s %6s %6s %8s%n",
+                "Bot", "Power", "Tier", "BT-ELO", "ELO", "Wins", "Losses", "WinRate");
+        System.out.println("-".repeat(78));
         for (Map.Entry<String, Map<String, Object>> e : report.winrates().entrySet()) {
             Map<String, Object> st = e.getValue();
-            System.out.printf("%-28s %7.1f %6d %6d %7.2f%%%n",
+            System.out.printf("%-24s %7.1f %4s %7.1f %7.1f %6d %6d %7.2f%%%n",
                     e.getKey(),
+                    ((Number) st.getOrDefault("power_score", 50.0)).doubleValue(),
+                    String.valueOf(st.getOrDefault("power_tier", "-")),
+                    ((Number) st.getOrDefault("bt_elo", st.get("elo"))).doubleValue(),
                     ((Number) st.get("elo")).doubleValue(),
                     ((Number) st.get("wins")).intValue(),
                     ((Number) st.get("losses")).intValue(),

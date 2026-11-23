@@ -113,6 +113,23 @@
     .kpi .label { font-size: 12px; color: var(--muted); }
     .kpi .val { font-size: 26px; font-weight: 800; color: var(--gold); margin-top: 4px; }
     .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .power-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; font-weight: 800; }
+    .tier-badge {
+      display: inline-block;
+      min-width: 26px;
+      text-align: center;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+    }
+    .tier-sp { background: rgba(255, 75, 75, 0.25); color: #ff7b7b; border: 1px solid #ff5757; }
+    .tier-s  { background: rgba(232, 195, 116, 0.24); color: #ffd97d; border: 1px solid #e8c374; }
+    .tier-a  { background: rgba(183, 140, 255, 0.22); color: #d0b3ff; border: 1px solid #a579f2; }
+    .tier-b  { background: rgba(93, 173, 226, 0.20); color: #85c8f2; border: 1px solid #5dade2; }
+    .tier-c  { background: rgba(88, 214, 141, 0.16); color: #7ce0a6; border: 1px solid #48b074; }
+    .tier-d  { background: rgba(158, 139, 122, 0.18); color: #b5a698; border: 1px solid #6e6054; }
     .card {
       background: linear-gradient(180deg, var(--panel2), var(--panel));
       border: 1px solid var(--border);
@@ -296,7 +313,7 @@
       <!-- Leaderboard -->
       <section class="card">
         <h2>
-          <span>🏆 队伍 ELO 排行榜与综合表现</span>
+          <span>🏆 队伍实力分排行榜与综合表现 <small style="font-size:11.5px;color:var(--muted);font-weight:400;margin-left:6px;">实力分 = 65% BT对手强度胜率 + 20% 净存活优势 + 15% 净伤压效率</small></span>
           <span id="meta-speed" style="font-size:12px;color:var(--muted);font-weight:400;"></span>
         </h2>
         <div class="table-scroll">
@@ -459,15 +476,115 @@
       };
     }
 
+    function tierClass(tier) {
+      if (tier === "S+") return "tier-sp";
+      if (tier === "S") return "tier-s";
+      if (tier === "A") return "tier-a";
+      if (tier === "B") return "tier-b";
+      if (tier === "C") return "tier-c";
+      return "tier-d";
+    }
+
+    function powerTierOf(ps) {
+      if (ps >= 78) return "S+";
+      if (ps >= 66) return "S";
+      if (ps >= 55) return "A";
+      if (ps >= 45) return "B";
+      if (ps >= 35) return "C";
+      return "D";
+    }
+
+    function ensurePowerMetrics(data) {
+      const winrates = data.winrates || {};
+      const names = Object.keys(winrates);
+      if (!names.length) return;
+      const needsCompute = names.some((n) => winrates[n].power_score === undefined || winrates[n].power_score === null);
+      if (!needsCompute) return;
+
+      // Compute order-independent Bradley-Terry ELO from head_to_head
+      const h2h = data.head_to_head || {};
+      const n = names.length;
+      const wins = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (let i = 0; i < n; i++) {
+        const row = h2h[names[i]] || {};
+        for (let j = 0; j < n; j++) {
+          if (i !== j) wins[i][j] = row[names[j]] || 0;
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (wins[i][j] + wins[j][i] > 0) {
+            wins[i][j] += 0.5;
+            wins[j][i] += 0.5;
+          }
+        }
+      }
+      const totalWins = wins.map((r) => r.reduce((s, x) => s + x, 0));
+      let p = new Array(n).fill(1.0);
+      for (let iter = 0; iter < 60; iter++) {
+        const next = new Array(n).fill(1.0);
+        for (let i = 0; i < n; i++) {
+          let denom = 0;
+          for (let j = 0; j < n; j++) {
+            if (i === j) continue;
+            const nij = wins[i][j] + wins[j][i];
+            if (nij > 0) denom += nij / (p[i] + p[j]);
+          }
+          next[i] = (denom > 0 && totalWins[i] > 0) ? (totalWins[i] / denom) : 1.0;
+        }
+        const logMean = next.reduce((s, x) => s + Math.log(Math.max(1e-9, x)), 0) / n;
+        const scale = Math.exp(-logMean);
+        p = next.map((x) => x * scale);
+      }
+      const btMap = {};
+      names.forEach((nm, i) => {
+        btMap[nm] = 1500 + 400 * (Math.log(Math.max(1e-9, p[i])) / Math.log(10));
+      });
+
+      // Net survivors from matches if available
+      const survDiff = {};
+      const survCnt = {};
+      for (const m of (data.matches || [])) {
+        if (m.team0_name && m.team1_name && m.team0_survivors !== undefined && m.team1_survivors !== undefined) {
+          survDiff[m.team0_name] = (survDiff[m.team0_name] || 0) + (m.team0_survivors - m.team1_survivors);
+          survCnt[m.team0_name] = (survCnt[m.team0_name] || 0) + 1;
+          survDiff[m.team1_name] = (survDiff[m.team1_name] || 0) + (m.team1_survivors - m.team0_survivors);
+          survCnt[m.team1_name] = (survCnt[m.team1_name] || 0) + 1;
+        }
+      }
+
+      for (const nm of names) {
+        const st = winrates[nm];
+        const bt = btMap[nm] ?? st.elo ?? 1500;
+        const btWinProb = 1 / (1 + Math.pow(10, (1500 - bt) / 400));
+        const netSurv = survCnt[nm] ? (survDiff[nm] / survCnt[nm]) : ((st.avg_survivors ?? 2) - 2);
+        const netSurvNorm = Math.max(0, Math.min(1, (netSurv + 4) / 8));
+        const dd = st.avg_damage_dealt || 0, dt = st.avg_damage_taken || 0;
+        const sd = st.avg_stress_dealt || 0, stkn = st.avg_stress_taken || 0;
+        const dmgRatio = (dd + dt) > 0 ? dd / (dd + dt) : 0.5;
+        const stressRatio = (sd + stkn) > 0 ? sd / (sd + stkn) : 0.5;
+        const combatImpact = 0.65 * Math.max(dmgRatio, stressRatio) + 0.35 * 0.5 * (dmgRatio + stressRatio);
+        const ps = Math.round(1000 * (0.65 * btWinProb + 0.20 * netSurvNorm + 0.15 * combatImpact)) / 10;
+        st.bt_elo = Math.round(bt * 10) / 10;
+        st.net_survivors = Math.round(netSurv * 100) / 100;
+        st.power_score = ps;
+        st.power_tier = powerTierOf(ps);
+      }
+    }
+
     function renderReport(data, sourceName) {
       currentData = data;
+      ensurePowerMetrics(data);
       $("dropzone").classList.add("hidden");
       $("dashboard").classList.remove("hidden");
       $("btn-download").classList.remove("hidden");
 
       const matches = data.matches || [];
       const winrates = data.winrates || {};
-      const teamNames = Object.keys(winrates);
+      const teamNames = Object.keys(winrates).sort((a, b) =>
+        (winrates[b].power_score ?? 0) - (winrates[a].power_score ?? 0) ||
+        (winrates[b].bt_elo ?? winrates[b].elo ?? 0) - (winrates[a].bt_elo ?? winrates[a].elo ?? 0)
+      );
       const ms = computeStatsFromMatches(data);
 
       $("report-meta").textContent = `数据源: ${sourceName} · ID: ${data.tournament_id || "—"} · 时间: ${data.created_at || "—"}`;
@@ -490,6 +607,8 @@
       // 2. Standings Table
       let stHtml = `<thead><tr>
         <th>#</th><th>队伍</th><th>Bot 程序类</th>
+        <th class="num" title="0-100综合实力分：65% BT对手强度胜率 + 20% 净存活优势 + 15% 净伤压效率">实力分</th>
+        <th class="num" title="无顺序依赖的 Bradley-Terry 实力 ELO">BT-ELO</th>
         <th class="num">ELO</th><th class="num">胜/负</th><th>胜率</th>
         <th class="num">场均伤害</th><th class="num">场均压力</th>
         <th class="num">均回合</th><th class="num">均存活</th>
@@ -497,10 +616,13 @@
       </tr></thead><tbody>`;
       teamNames.forEach((name, idx) => {
         const st = winrates[name];
+        const tier = st.power_tier || powerTierOf(st.power_score || 0);
         stHtml += `<tr>
           <td><b>${idx + 1}</b></td>
           <td><b>${name}</b></td>
           <td><span class="badge" title="${st.bot_class || ""}">${shortClass(st.bot_class)}</span></td>
+          <td class="num"><span class="power-cell"><span style="color:#ffd97d;">${fmt(st.power_score, 1)}</span><span class="tier-badge ${tierClass(tier)}">${tier}</span></span></td>
+          <td class="num" style="color:var(--blue);font-weight:700;">${fmt(st.bt_elo, 1)}</td>
           <td class="num" style="color:var(--gold);font-weight:700;">${fmt(st.elo, 1)}</td>
           <td class="num">${st.wins}W / ${st.losses}L</td>
           <td><div class="win-bar-wrap"><div class="win-bar"><div style="width:${Math.min(100, st.winrate_pct || 0)}%"></div></div><span>${fmt(st.winrate_pct, 1)}%</span></div></td>
@@ -579,13 +701,14 @@
           `<span class="hero-chip"><img src="/api/portrait/${hid}/A" onerror="this.style.display='none'" />${hid}</span>`
         ).join("");
         return `<div class="team-pill-box">
-          <div style="font-size:16px;font-weight:800;color:${color}">${name}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px;">Bot 类：<code>${st.bot_class || "—"}</code> · ELO <b>${fmt(st.elo, 1)}</b></div>
+          <div style="font-size:16px;font-weight:800;color:${color}">${name} <span class="tier-badge ${tierClass(st.power_tier || "B")}" style="margin-left:6px;vertical-align:middle;">${st.power_tier || "-"}</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;">Bot 类：<code>${st.bot_class || "—"}</code> · 实力分 <b style="color:#ffd97d;">${fmt(st.power_score, 1)}</b> · BT-ELO <b style="color:var(--blue);">${fmt(st.bt_elo, 1)}</b> · ELO <b>${fmt(st.elo, 1)}</b></div>
           <div class="hero-chips">${heroes || '<span class="muted">无阵容信息</span>'}</div>
         </div>`;
       };
 
       const rows = [
+        ["综合实力分 (0-100)", sa.power_score || 0, sb.power_score || 0, 100, ""],
         ["总胜率 (%)", sa.winrate_pct || 0, sb.winrate_pct || 0, 100, "%"],
         ["交锋场均伤害", matches.length ? aDmg / n : (sa.avg_damage_dealt || 0), matches.length ? bDmg / n : (sb.avg_damage_dealt || 0), 0, ""],
         ["总场均伤害", sa.avg_damage_dealt || 0, sb.avg_damage_dealt || 0, 0, ""],

@@ -52,6 +52,15 @@ public class CircusSearchBot extends AbstractBot {
     protected final int maxDepth;
     protected final int rootWidth;
     protected final int branchWidth;
+    protected final boolean detailedTtHash;
+    protected final boolean strategicEval;
+    protected final double mitigationWeight;
+    protected final double pressureWeight;
+    protected final double setupWeight;
+    protected final double bulwarkPriority;
+    protected final double guardBias;
+    protected final double controlBonus;
+    private final EffectiveStats strategicStats = new EffectiveStats();
 
     // Transposition Table (reused across decisions, stamped by generation to avoid clearing arrays!)
     private final long[] ttKey = new long[TT_SIZE];
@@ -94,28 +103,85 @@ public class CircusSearchBot extends AbstractBot {
             int rootWidth,
             int branchWidth
     ) {
+        this(name, timeBudgetSec,
+                PROFILES.getOrDefault(profileName != null ? profileName : "balanced", PROFILES.get("balanced")),
+                seed, presetId, maxDepth, rootWidth, branchWidth,
+                false, false, 0.0, 0.0, 0.0, 120.0, 0.0, 0.0);
+    }
+
+    protected CircusSearchBot(
+            String name,
+            double timeBudgetSec,
+            SearchProfile profile,
+            Long seed,
+            String presetId,
+            int maxDepth,
+            int rootWidth,
+            int branchWidth,
+            boolean detailedTtHash,
+            boolean strategicEval,
+            double mitigationWeight,
+            double pressureWeight,
+            double setupWeight,
+            double bulwarkPriority,
+            double guardBias,
+            double controlBonus
+    ) {
         super(name != null ? name : "CircusSearchBot", presetId);
         this.timeBudgetSec = Math.min(0.46, Math.max(0.005, timeBudgetSec));
-        this.profile = PROFILES.getOrDefault(profileName != null ? profileName : "balanced", PROFILES.get("balanced"));
+        this.profile = (profile != null) ? profile : PROFILES.get("balanced");
         this.maxDepth = Math.max(1, maxDepth);
         this.rootWidth = Math.max(2, rootWidth);
         this.branchWidth = Math.max(2, branchWidth);
+        this.detailedTtHash = detailedTtHash;
+        this.strategicEval = strategicEval;
+        this.mitigationWeight = mitigationWeight;
+        this.pressureWeight = pressureWeight;
+        this.setupWeight = setupWeight;
+        this.bulwarkPriority = bulwarkPriority;
+        this.guardBias = guardBias;
+        this.controlBonus = controlBonus;
     }
 
     public CircusSearchBot(String name, double timeBudgetSec, String profileName, Long seed, String presetId) {
         this(name, timeBudgetSec, profileName, seed, presetId, 10, 14, 6);
     }
 
+    private static SearchProfile resolveProfile(BotContext ctx) {
+        String profileName = ctx.optionString("profile", "balanced");
+        SearchProfile base = PROFILES.getOrDefault(profileName != null ? profileName : "balanced", PROFILES.get("balanced"));
+        return new SearchProfile(
+                ctx.optionDouble("kill_weight", base.killWeight),
+                ctx.optionDouble("survival_weight", base.survivalWeight),
+                ctx.optionDouble("damage_weight", base.damageWeight),
+                ctx.optionDouble("stun_weight", base.stunWeight),
+                ctx.optionDouble("stress_weight", base.stressWeight),
+                ctx.optionDouble("disruption_weight", base.disruptionWeight),
+                ctx.optionDouble("defense_weight", base.defenseWeight)
+        );
+    }
+
     public CircusSearchBot(BotContext ctx) {
         this(
                 ctx.name(),
                 ctx.effectiveTimeBudget(0.25),
-                ctx.optionString("profile", "balanced"),
+                resolveProfile(ctx),
                 ctx.seed(),
                 ctx.presetId(),
                 ctx.optionInt("max_depth", 10),
-                ctx.optionInt("root_width", 14),
-                ctx.optionInt("branch_width", 6)
+                ctx.optionInt("root_width", 10),
+                ctx.optionInt("branch_width", 4),
+                ctx.optionBool("detailed_tt_hash", true),
+                ctx.optionBool("strategic_eval",
+                        ctx.optionDouble("mitigation_weight", 0.0) > 0.0
+                                || ctx.optionDouble("pressure_weight", 0.0) > 0.0
+                                || ctx.optionDouble("setup_weight", 0.0) > 0.0),
+                ctx.optionDouble("mitigation_weight", 0.0),
+                ctx.optionDouble("pressure_weight", 0.0),
+                ctx.optionDouble("setup_weight", 0.0),
+                ctx.optionDouble("bulwark_priority", 120.0),
+                ctx.optionDouble("guard_bias", 0.0),
+                ctx.optionDouble("control_bonus", 0.0)
         );
         if (ctx.teamConfig() != null) setFixedTeam(ctx.teamConfig());
     }
@@ -316,7 +382,32 @@ public class CircusSearchBot extends AbstractBot {
 
         double corpseTerm = (enCorpses - myCorpses) * 14.0;
         double turnBonus = (engine.state.activeTeam == myTeam) ? 24.0 : -24.0;
-        return myScore - enScore + corpseTerm + turnBonus;
+        double base = myScore - enScore + corpseTerm + turnBonus;
+        if (!strategicEval) return base;
+        return base + strategicValue(engine, myTeam) - strategicValue(engine, oppTeam);
+    }
+
+    private double strategicValue(ArenaEngine engine, int team) {
+        double value = 0.0;
+        for (UnitState u : engine.state.teams[team]) {
+            if (!u.alive || u.isCorpse) continue;
+            double[] s = engine.computeEffectiveStats(u, null, "", strategicStats).values;
+            value += mitigationWeight * ((s[StatKey.DODGE] - u.heroDef.dodge) * 6.0
+                    + (s[StatKey.PROT] - u.heroDef.prot) * 500.0
+                    + (s[StatKey.STRESS_RES] - u.heroDef.stressRes) * 2.0);
+            value += s[StatKey.ACC] * 2.4 + s[StatKey.DMG_PCT] * 220.0;
+            value += s[StatKey.STUN_CHANCE] * 0.8;
+            int incomingDots = 0, regen = 0;
+            for (ActiveDot dot : u.dots) {
+                int total = dot.amount * Math.min(3, dot.roundsLeft);
+                if (dot.kind == Models.DOT_REGEN) regen += total;
+                else if (dot.kind != Models.DOT_HORROR) incomingDots += total;
+            }
+            value -= Math.max(0, regen - (u.maxHp - u.hp + incomingDots + 8)) * 8.5;
+            value -= pressureWeight * (u.stress * 1.1 + (u.isAfflicted ? 100.0 : 0.0)
+                    + Math.max(0, u.stress - 150) * 2.2);
+        }
+        return value;
     }
 
     // ------------------------------------------------------------------ Analytical EV Action Scorer
@@ -646,6 +737,43 @@ public class CircusSearchBot extends AbstractBot {
             }
             if (maxAllyThreat >= 1.0 && score < 500.0) score -= 90.0;
         }
+        if (strategicEval && "SKILL".equals(act.kind)) {
+            score = applyStrategicActionEv(engine, act, actor, sdef, team, maxAllyThreat, anyAllyDd, score);
+        }
+        return score;
+    }
+
+    private double applyStrategicActionEv(
+            ArenaEngine engine, Action action, UnitState actor, SkillDef skill,
+            int team, double maxThreat, boolean allyDd, double score
+    ) {
+        int living = engine.countLivingHeroes(team);
+        if ("bolster".equals(skill.id)) score += living * 145.0 * setupWeight;
+        if ("bulwark_of_faith".equals(skill.id)) score += living * bulwarkPriority * setupWeight;
+        if ("toxin_trickery".equals(skill.id)) score += engine.state.roundNum <= 3 ? 170.0 : 30.0;
+        if ("bellow".equals(skill.id)) {
+            for (UnitState enemy : engine.state.teams[1 - team]) {
+                if (!enemy.alive || enemy.isCorpse) continue;
+                double damagePenalty = engine.buffSum(enemy, StatKey.DMG_PCT);
+                if (damagePenalty > -0.6) score += enemy.actedThisRound ? 30.0 : 65.0;
+            }
+        }
+        if (skill.regen != null) {
+            for (String uid : action.targetUids) {
+                UnitState target = engine.findUnit(uid);
+                int existing = 0;
+                for (ActiveDot dot : target.dots) if (dot.kind == Models.DOT_REGEN)
+                    existing += dot.amount * Math.min(3, dot.roundsLeft);
+                if (target.hp > target.maxHp * 0.75 && existing >= 12) score -= 320.0;
+            }
+        }
+        if (skill.guardRounds > 0 && !allyDd && maxThreat < 0.22) score += guardBias;
+        if (skill.stunChance > 0 && controlBonus != 0.0) {
+            for (String uid : action.targetUids) {
+                UnitState target = engine.findUnit(uid);
+                if (target.alive && !target.isCorpse && !target.stunned && !target.actedThisRound) score += controlBonus;
+            }
+        }
         return score;
     }
 
@@ -813,7 +941,25 @@ public class CircusSearchBot extends AbstractBot {
     }
 
     /** Allows specialized evaluators to include additional state in their transposition keys. */
-    protected long searchStateHash(ArenaEngine engine) { return engine.computeStateHash(); }
+    protected long searchStateHash(ArenaEngine engine) {
+        if (!detailedTtHash) return engine.computeStateHash();
+        long h = engine.computeStateHash() ^ (engine.state.turnCount * 0x9E3779B97F4A7C15L);
+        for (var team : engine.state.teams) for (UnitState u : team) {
+            h = Long.rotateLeft(h, 11) ^ u.uid.hashCode();
+            h = h * 31 + u.skillUses.hashCode();
+            h = h * 31 + u.skillCooldowns.hashCode();
+            h = h * 31 + (u.guardingUid == null ? 0 : u.guardingUid.hashCode());
+            h = h * 31 + (u.guardedByUid == null ? 0 : u.guardedByUid.hashCode());
+            h = h * 31 + (u.traitId == null ? 0 : u.traitId.hashCode());
+            h = h * 31 + u.corpseRounds + u.freshStatusMask * 17L;
+            for (ActiveBuff b : u.buffs) {
+                h = Long.rotateLeft(h, 9) ^ Double.doubleToLongBits(b.value);
+                h = h * 31 + b.statId + b.condBit * 17L + b.roundsLeft * 127L + (b.freshThisTurn ? 1 : 0);
+            }
+            for (ActiveDot d : u.dots) h = Long.rotateLeft(h, 7) ^ (d.kind + d.amount * 31L + d.roundsLeft * 997L);
+        }
+        return h;
+    }
 
     @Override
     public boolean requiresUnitObservations() { return getClass() != CircusSearchBot.class; }

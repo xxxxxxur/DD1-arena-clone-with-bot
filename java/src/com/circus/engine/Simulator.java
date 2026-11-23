@@ -453,7 +453,7 @@ public final class Simulator {
 
         final class TeamAgg {
             int wins, losses, games;
-            long dmgDealt, dmgTaken, stressDealt, stressTaken, roundsSum, survivorsSum;
+            long dmgDealt, dmgTaken, stressDealt, stressTaken, roundsSum, survivorsSum, oppSurvivorsSum;
             long firstDeathSum, firstDeathCnt;
             long firstDdSum, firstDdCnt;
             long firstAffSum, firstAffCnt;
@@ -492,6 +492,7 @@ public final class Simulator {
             a0.stressTaken += res.team1TotalStress;
             a0.roundsSum += res.rounds;
             a0.survivorsSum += res.team0Survivors;
+            a0.oppSurvivorsSum += res.team1Survivors;
 
             a1.dmgDealt += res.team1TotalDamage;
             a1.dmgTaken += res.team0TotalDamage;
@@ -499,6 +500,7 @@ public final class Simulator {
             a1.stressTaken += res.team0TotalStress;
             a1.roundsSum += res.rounds;
             a1.survivorsSum += res.team1Survivors;
+            a1.oppSurvivorsSum += res.team0Survivors;
 
             // Milestone stats for when this team inflicted first Death / DD / Affliction / HA on opponent
             if (res.team1FirstDeathRound != null) { a0.firstDeathSum += res.team1FirstDeathRound; a0.firstDeathCnt++; }
@@ -539,8 +541,34 @@ public final class Simulator {
             }
         }
 
+        Map<String, Double> btElo = computeBradleyTerryElo(new ArrayList<>(elo.keySet()), h2h);
+        Map<String, Double> powerScores = new LinkedHashMap<>();
+        Map<String, String> powerTiers = new LinkedHashMap<>();
+        for (String name : elo.keySet()) {
+            TeamAgg st = aggMap.get(name);
+            int g = Math.max(1, st.games);
+            double bt = btElo.getOrDefault(name, 1500.0);
+            double btWinProb = 1.0 / (1.0 + Math.pow(10.0, (1500.0 - bt) / 400.0));
+            double netSurv = (double) (st.survivorsSum - st.oppSurvivorsSum) / g;
+            double netSurvNorm = Math.max(0.0, Math.min(1.0, (netSurv + 4.0) / 8.0));
+            double dmgRatio = (st.dmgDealt + st.dmgTaken) > 0
+                    ? (double) st.dmgDealt / (st.dmgDealt + st.dmgTaken) : 0.5;
+            double stressRatio = (st.stressDealt + st.stressTaken) > 0
+                    ? (double) st.stressDealt / (st.stressDealt + st.stressTaken) : 0.5;
+            double combatImpact = 0.65 * Math.max(dmgRatio, stressRatio) + 0.35 * 0.5 * (dmgRatio + stressRatio);
+            double ps = round1(100.0 * (0.65 * btWinProb + 0.20 * netSurvNorm + 0.15 * combatImpact));
+            powerScores.put(name, ps);
+            powerTiers.put(name, powerTierOf(ps));
+        }
+
         List<String> sortedNames = new ArrayList<>(elo.keySet());
-        sortedNames.sort((a, b) -> Double.compare(elo.get(b), elo.get(a)));
+        sortedNames.sort((a, b) -> {
+            int cmp = Double.compare(powerScores.get(b), powerScores.get(a));
+            if (cmp != 0) return cmp;
+            cmp = Double.compare(btElo.getOrDefault(b, 1500.0), btElo.getOrDefault(a, 1500.0));
+            if (cmp != 0) return cmp;
+            return Double.compare(elo.get(b), elo.get(a));
+        });
 
         Map<String, Double> sortedElo = new LinkedHashMap<>();
         Map<String, Map<String, Object>> winrates = new LinkedHashMap<>();
@@ -554,6 +582,9 @@ public final class Simulator {
             m.put("losses", st.losses);
             m.put("games", st.games);
             m.put("winrate_pct", round2(100.0 * st.wins / g));
+            m.put("power_score", powerScores.get(name));
+            m.put("power_tier", powerTiers.get(name));
+            m.put("bt_elo", round1(btElo.getOrDefault(name, 1500.0)));
             m.put("elo", r);
             m.put("bot_class", st.botClass);
             m.put("heroes", st.heroes);
@@ -563,6 +594,7 @@ public final class Simulator {
             m.put("avg_stress_taken", round1((double) st.stressTaken / g));
             m.put("avg_rounds", round2((double) st.roundsSum / g));
             m.put("avg_survivors", round2((double) st.survivorsSum / g));
+            m.put("net_survivors", round2((double) (st.survivorsSum - st.oppSurvivorsSum) / g));
             m.put("avg_inflict_first_death_round", st.firstDeathCnt > 0 ? round2((double) st.firstDeathSum / st.firstDeathCnt) : null);
             m.put("avg_inflict_first_dd_round", st.firstDdCnt > 0 ? round2((double) st.firstDdSum / st.firstDdCnt) : null);
             m.put("avg_inflict_first_affliction_round", st.firstAffCnt > 0 ? round2((double) st.firstAffSum / st.firstAffCnt) : null);
@@ -637,6 +669,77 @@ public final class Simulator {
             if (t == 0 || t == 1) return t;
         }
         return -1;
+    }
+
+    private static Map<String, Double> computeBradleyTerryElo(
+            List<String> names, Map<String, Map<String, Integer>> h2h
+    ) {
+        int n = names.size();
+        Map<String, Double> out = new LinkedHashMap<>();
+        if (n == 0) return out;
+        if (n == 1) {
+            out.put(names.get(0), 1500.0);
+            return out;
+        }
+        double[][] wins = new double[n][n];
+        double[] totalWins = new double[n];
+        for (int i = 0; i < n; i++) {
+            Map<String, Integer> row = h2h.getOrDefault(names.get(i), Collections.emptyMap());
+            for (int j = 0; j < n; j++) {
+                if (i == j) continue;
+                int w = row.getOrDefault(names.get(j), 0);
+                wins[i][j] = w;
+            }
+        }
+        // Symmetric Laplace prior (0.5 pseudo-draw per played pair) keeps ratings finite even on 100%/0% sweeps
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                double played = wins[i][j] + wins[j][i];
+                if (played > 0) {
+                    wins[i][j] += 0.5;
+                    wins[j][i] += 0.5;
+                }
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            double s = 0.0;
+            for (int j = 0; j < n; j++) s += wins[i][j];
+            totalWins[i] = s;
+        }
+        double[] p = new double[n];
+        Arrays.fill(p, 1.0);
+        double[] next = new double[n];
+        for (int iter = 0; iter < 60; iter++) {
+            for (int i = 0; i < n; i++) {
+                double denom = 0.0;
+                for (int j = 0; j < n; j++) {
+                    if (i == j) continue;
+                    double nij = wins[i][j] + wins[j][i];
+                    if (nij > 0) denom += nij / (p[i] + p[j]);
+                }
+                next[i] = (denom > 0 && totalWins[i] > 0) ? (totalWins[i] / denom) : 1.0;
+            }
+            // Normalize geometric mean to 1.0
+            double logSum = 0.0;
+            for (int i = 0; i < n; i++) logSum += Math.log(Math.max(1e-9, next[i]));
+            double scale = Math.exp(-logSum / n);
+            for (int i = 0; i < n; i++) p[i] = next[i] * scale;
+        }
+        double ln10 = Math.log(10.0);
+        for (int i = 0; i < n; i++) {
+            double rating = 1500.0 + 400.0 * (Math.log(Math.max(1e-9, p[i])) / ln10);
+            out.put(names.get(i), rating);
+        }
+        return out;
+    }
+
+    private static String powerTierOf(double powerScore) {
+        if (powerScore >= 78.0) return "S+";
+        if (powerScore >= 66.0) return "S";
+        if (powerScore >= 55.0) return "A";
+        if (powerScore >= 45.0) return "B";
+        if (powerScore >= 35.0) return "C";
+        return "D";
     }
 
     private static double round1(double v) { return Math.rint(v * 10.0) / 10.0; }

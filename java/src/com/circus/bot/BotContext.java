@@ -36,6 +36,10 @@ public record BotContext(
         return Json.intVal(options, key, def);
     }
 
+    public boolean optionBool(String key, boolean def) {
+        return Json.boolVal(options, key, def);
+    }
+
     public double effectiveTimeBudget(double fallback) {
         if (timeBudgetOverrideSec != null) return timeBudgetOverrideSec;
         return optionDouble("time_budget", fallback);

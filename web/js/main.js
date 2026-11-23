@@ -123,6 +123,7 @@ async function init() {
 
   populatePresetSelects();
   populateTeamBotSelects();
+  populateTournamentTeamPicker();
   bindEvents();
   refreshReplays();
   fitCombatHud();
@@ -148,6 +149,72 @@ function updateCloseupButtonLabel() {
   const badge = $("hud-closeup-badge");
   if (hudBtn) hudBtn.classList.toggle("active", on);
   if (badge) badge.textContent = on ? "ON" : "OFF";
+}
+
+const CLASSIC_TOURNAMENT_TEAMS = [
+  "direct_kill",
+  "stun_kill",
+  "iron_wall",
+  "iron_hound",
+  "shuffle_kill",
+];
+
+function getSelectedTournamentTeams() {
+  const container = $("lab-team-list");
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
+}
+
+function updateTournamentSelectionSummary() {
+  const summaryEl = $("lab-team-summary");
+  const container = $("lab-team-list");
+  if (!summaryEl || !container) return;
+  const all = container.querySelectorAll('input[type="checkbox"]').length;
+  const selected = getSelectedTournamentTeams().length;
+  const m = Math.max(2, Math.min(100, parseInt($("lab-matches")?.value, 10) || 10));
+  const pairs = selected >= 2 ? (selected * (selected - 1)) / 2 : 0;
+  const totalMatches = pairs * m;
+  summaryEl.textContent =
+    appState.lang === "zh"
+      ? `已选 ${selected}/${all} 队 · ${pairs} 组对阵 · 共 ${totalMatches} 局`
+      : `${selected}/${all} selected · ${pairs} pairs · ${totalMatches} matches`;
+}
+
+function populateTournamentTeamPicker(preserveChecked = false) {
+  const container = $("lab-team-list");
+  if (!container) return;
+  const prevChecked = preserveChecked ? new Set(getSelectedTournamentTeams()) : null;
+  const teams = appState.bootstrap?.teams || [];
+  container.innerHTML = "";
+  for (const t of teams) {
+    const isChecked = prevChecked ? prevChecked.has(t.id) : true;
+    const label = document.createElement("label");
+    label.className = "lab-team-chip" + (isChecked ? " checked" : "");
+    label.title = `${t.id} (${t.bot_class || ""})`;
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = t.id;
+    cb.checked = isChecked;
+    cb.addEventListener("change", () => {
+      label.classList.toggle("checked", cb.checked);
+      updateTournamentSelectionSummary();
+    });
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "lab-team-name";
+    nameSpan.textContent = appState.lang === "zh" ? (t.name_zh || t.name || t.id) : (t.name_en || t.name || t.id);
+
+    const clsSpan = document.createElement("span");
+    clsSpan.className = "lab-team-cls";
+    clsSpan.textContent = (t.bot_class || "").split(".").pop() || "Bot";
+
+    label.appendChild(cb);
+    label.appendChild(nameSpan);
+    label.appendChild(clsSpan);
+    container.appendChild(label);
+  }
+  updateTournamentSelectionSummary();
 }
 
 function populateTeamBotSelects() {
@@ -240,6 +307,7 @@ function bindEvents() {
     appState.townScene.setLanguage(appState.lang);
     updateCloseupButtonLabel();
     populatePresetSelects();
+    populateTournamentTeamPicker(true);
     if (appState.draftTeam) renderTeamBuilder();
     if (appState.obs) renderCombatHud();
     appState.audio.playUiClick();
@@ -340,25 +408,49 @@ function bindEvents() {
     if (lastReportUrl) window.open(lastReportUrl, "_blank");
   });
 
+  const setLabSelection = (predicate) => {
+    const container = $("lab-team-list");
+    if (!container) return;
+    for (const cb of container.querySelectorAll('input[type="checkbox"]')) {
+      cb.checked = predicate(cb.value);
+      cb.closest(".lab-team-chip")?.classList.toggle("checked", cb.checked);
+    }
+    updateTournamentSelectionSummary();
+  };
+  $("btn-lab-select-all")?.addEventListener("click", () => setLabSelection(() => true));
+  $("btn-lab-select-classic")?.addEventListener("click", () =>
+    setLabSelection((id) => CLASSIC_TOURNAMENT_TEAMS.includes(id))
+  );
+  $("btn-lab-clear")?.addEventListener("click", () => setLabSelection(() => false));
+  $("lab-matches")?.addEventListener("input", () => updateTournamentSelectionSummary());
+
   $("btn-run-lab").addEventListener("click", async () => {
     const btn = $("btn-run-lab");
     const openBtn = $("btn-open-report");
     const out = $("lab-output");
+    const teamEntries = appState.bootstrap?.teams || [];
+    const selectedIds = getSelectedTournamentTeams();
+    const teamIds = selectedIds.length > 0
+      ? selectedIds
+      : (teamEntries.length >= 2 ? teamEntries.map((t) => t.id) : CLASSIC_TOURNAMENT_TEAMS);
+    if (teamIds.length < 2) {
+      out.textContent = appState.lang === "zh" ? "请至少选择 2 支参赛队伍！" : "Please select at least 2 teams!";
+      return;
+    }
     btn.disabled = true;
     openBtn?.classList.add("hidden");
-    out.textContent = appState.lang === "zh" ? "正在 Java 26 多线程无头引擎中运行高速锦标赛..." : "Running Java 26 multi-threaded headless tournament...";
+    out.textContent =
+      appState.lang === "zh"
+        ? `正在 Java 26 多线程无头引擎中运行高速锦标赛（${teamIds.length} 支队伍）...`
+        : `Running Java 26 multi-threaded headless tournament (${teamIds.length} teams)...`;
     try {
-      const m = parseInt($("lab-matches").value, 10) || 6;
-      const teamEntries = appState.bootstrap?.teams || [];
-      const teamIds = teamEntries.length >= 2
-        ? teamEntries.slice(0, 6).map((t) => t.id)
-        : ["direct_kill", "stun_kill", "iron_wall", "iron_hound", "shuffle_kill"];
+      const m = Math.max(2, Math.min(100, parseInt($("lab-matches").value, 10) || 10));
       const res = await fetch("/api/tournament", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bots: teamIds,
-          matches_per_pair: Math.min(40, m),
+          matches_per_pair: m,
           time_budget: 0.025,
         }),
       });
@@ -368,9 +460,11 @@ function bindEvents() {
       if (r.report_file) {
         txt += `Report File: tournaments/${r.report_file}\n`;
       }
-      txt += `---------------------------------------------\n`;
+      txt += `-------------------------------------------------------------------\n`;
       for (const [name, st] of Object.entries(r.winrates)) {
-        txt += `${name.padEnd(18)} ELO:${String(st.elo).padStart(6)}  W:${st.wins} L:${st.losses} (${st.winrate_pct}%)\n`;
+        const ps = st.power_score !== undefined ? Number(st.power_score).toFixed(1) : "—";
+        const tier = st.power_tier || "-";
+        txt += `${name.padEnd(18)} 实力分:${String(ps).padStart(5)} [${tier.padEnd(2)}]  ELO:${String(st.elo).padStart(6)}  W:${String(st.wins).padStart(2)} L:${String(st.losses).padStart(2)} (${st.winrate_pct}%)\n`;
       }
       out.textContent = txt;
       if (r.report_url) {
