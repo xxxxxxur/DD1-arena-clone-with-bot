@@ -4,7 +4,7 @@ import com.circus.engine.ArenaEngine;
 import java.util.Arrays;
 
 public final class UnitNeuralSearchBot extends NeuralSearchBot {
-    private final UnitValue units = UnitValue.read();
+    private final UnitValue units = UnitValue.readCached();
     private final UnitValue.Row row = new UnitValue.Row();
     private final float[] hidden = new float[UnitValue.HIDDEN];
 

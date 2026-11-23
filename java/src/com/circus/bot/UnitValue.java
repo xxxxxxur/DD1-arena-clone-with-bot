@@ -4,12 +4,15 @@ import com.circus.engine.*;
 import com.circus.engine.Models.*;
 import java.io.*;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 
 /** A shared sparse MLP evaluated once per occupied slot. Rows use the same vocabulary on both sides. */
 final class UnitValue {
     static final int HIDDEN = 32;
     static final Path FILE = ArenaValue.FILE.resolveSibling("neural-units-v1.bin");
+    private record CachedModel(long mtimeNanos, long size, UnitValue model) {}
+    private static volatile CachedModel cachedModel;
     private static final int RANK = 23, GUARD_FROM = 27, GUARD_TO = 31, DOT = 35;
     private static final int BUFF = DOT + 8, FIRST_ID = BUFF + 2 * StatKey.STAT_COUNT;
     static final class Catalog {
@@ -66,14 +69,22 @@ final class UnitValue {
         }
         r.add(C.heroes.get(u.heroDef), 1);
         for (var item : u.trinketDefs) r.add(C.items.get(item), 1);
+        boolean hasCooldowns = !u.skillCooldowns.isEmpty();
+        boolean hasUses = !u.skillUses.isEmpty();
         for (var s : u.equippedSkillDefs) {
             int k = C.skills.get(s);
             r.add(k, 1);
             r.add(k+1, e.canUseSkill(u,s) ? 1 : 0);
-            r.add(k+2, u.skillCooldowns.getOrDefault(s.id,0) / 3.);
-            if (s.maxUses > 0) r.add(k+3, (s.maxUses-u.skillUses.getOrDefault(s.id,0))/(double)s.maxUses);
+            if (hasCooldowns) r.add(k+2, u.skillCooldowns.getOrDefault(s.id,0) / 3.);
+            if (s.maxUses > 0) {
+                int used = hasUses ? u.skillUses.getOrDefault(s.id,0) : 0;
+                r.add(k+3, (s.maxUses-used)/(double)s.maxUses);
+            }
         }
-        if (u.traitId != null && C.traits.containsKey(u.traitId)) r.add(C.traits.get(u.traitId),1);
+        if (u.traitId != null) {
+            Integer traitIdx = C.traits.get(u.traitId);
+            if (traitIdx != null) r.add(traitIdx, 1);
+        }
         r.add(2,u.hp / 40.);
         r.add(3,(double)u.hp / u.maxHp);
         r.add(4,u.stress / 150.);
@@ -128,18 +139,36 @@ final class UnitValue {
     void write() throws IOException {
         Path tmp=Files.createTempFile(FILE.getParent(),"unit-value-",".tmp");
         try {
-            try (var stream=new DataOutputStream(Files.newOutputStream(tmp))) {
+            try (var stream=new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp), 65536))) {
                 stream.writeInt(0x554e5631);
                 stream.writeUTF(String.join("|",C.schema));
                 for (float[] a:w) for(float v:a) stream.writeFloat(v);
                 for (float v:out) stream.writeFloat(v);
             }
             Files.move(tmp,FILE,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+            cachedModel = null;
         } finally {Files.deleteIfExists(tmp);}
+    }
+    static UnitValue readCached() {
+        try {
+            BasicFileAttributes attrs = Files.readAttributes(FILE, BasicFileAttributes.class);
+            long mtime = attrs.lastModifiedTime().toInstant().toEpochMilli() * 1_000_000L
+                    + (attrs.lastModifiedTime().toInstant().getNano() % 1_000_000L);
+            long size = attrs.size();
+            CachedModel c = cachedModel;
+            if (c != null && c.mtimeNanos == mtime && c.size == size) return c.model;
+            synchronized (UnitValue.class) {
+                c = cachedModel;
+                if (c != null && c.mtimeNanos == mtime && c.size == size) return c.model;
+                UnitValue loaded = read();
+                cachedModel = new CachedModel(mtime, size, loaded);
+                return loaded;
+            }
+        } catch (IOException ex) { throw new UncheckedIOException(ex); }
     }
     static UnitValue read() {
         var net=new UnitValue();
-        try(var in=new DataInputStream(Files.newInputStream(FILE))) {
+        try(var in=new DataInputStream(new BufferedInputStream(Files.newInputStream(FILE), 65536))) {
             if(in.readInt()!=0x554e5631 || !in.readUTF().equals(String.join("|",C.schema)))
                 throw new IOException("Incompatible unit vocabulary");
             for(float[] a:net.w) for(int k=0;k<a.length;k++) a[k]=finite(in);

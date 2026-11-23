@@ -12,18 +12,30 @@ final class TacticalFeatures {
     static final Path BALANCED = FILE.resolveSibling("neural-tactics-balanced-v1.bin");
 
     static void encode(ArenaEngine e, int viewer, double[] x, EffectiveStats stats) {
+        encode(e, viewer, x, stats, null);
+    }
+
+    static void encode(ArenaEngine e, int viewer, double[] x, EffectiveStats stats, EffectiveStats[][] precomputed) {
         Arrays.fill(x, 0);
         for (int side = 0; side < 2; side++) {
             int occupied = 0, vulnerable = 0;
-            for (var enemy : e.state.teams[1-side]) if (enemy.alive && !enemy.isCorpse) {
-                occupied |= 1 << enemy.rank;
-                if (enemy.atDeathsDoor || enemy.hp < enemy.maxHp * .35) vulnerable |= 1 << enemy.rank;
+            var enemies = e.state.teams[1 - side];
+            for (int ei = 0, en = enemies.size(); ei < en; ei++) {
+                var enemy = enemies.get(ei);
+                if (enemy.alive && !enemy.isCorpse) {
+                    occupied |= 1 << enemy.rank;
+                    if (enemy.atDeathsDoor || enemy.hp < enemy.maxHp * .35) vulnerable |= 1 << enemy.rank;
+                }
             }
             double sign = side == viewer ? 1 : -1;
             double bestHeal = 0, bestHit = 0, lowestHp = 1;
-            for (var u : e.state.teams[side]) {
+            var teamUnits = e.state.teams[side];
+            for (int ui = 0, un = teamUnits.size(); ui < un; ui++) {
+                var u = teamUnits.get(ui);
                 if (!u.alive || u.isCorpse) continue;
-                double[] v = e.computeEffectiveStats(u, null, "", stats).values;
+                double[] v = (precomputed != null && ui < precomputed[side].length)
+                        ? precomputed[side][ui].values
+                        : e.computeEffectiveStats(u, null, "", stats).values;
                 double heal = 0, hit = 0, pressure = 0, dot = 0, finish = 0, stun = 0;
                 int ranks = 0;
                 for (var s : u.equippedSkillDefs) {

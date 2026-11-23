@@ -676,8 +676,8 @@ public final class ArenaEngine {
 
     public boolean canUseSkill(UnitState actor, SkillDef sdef) {
         if (!sdef.canLaunchFrom(actor.rank)) return false;
-        if (sdef.maxUses > 0 && actor.skillUses.getOrDefault(sdef.id, 0) >= sdef.maxUses) return false;
-        if (actor.skillCooldowns.getOrDefault(sdef.id, 0) > 0) return false;
+        if (sdef.maxUses > 0 && !actor.skillUses.isEmpty() && actor.skillUses.getOrDefault(sdef.id, 0) >= sdef.maxUses) return false;
+        if (!actor.skillCooldowns.isEmpty() && actor.skillCooldowns.getOrDefault(sdef.id, 0) > 0) return false;
         if (sdef.requiresHpBelowPct > 0.0 && ((double) actor.hp / Math.max(1, actor.maxHp)) >= sdef.requiresHpBelowPct) {
             return false;
         }
@@ -975,13 +975,14 @@ public final class ArenaEngine {
     }
 
     private void executeSkill(UnitState actor, HeroDef hdef, SkillDef sdef, List<String> targetUids, List<CombatEvent> events) {
-        actor.skillUses.put(sdef.id, actor.skillUses.getOrDefault(sdef.id, 0) + 1);
+        Map<String, Integer> uses = actor.mutableSkillUses();
+        uses.put(sdef.id, uses.getOrDefault(sdef.id, 0) + 1);
         List<String> actualTargetUids = targetUids;
         if (sdef.randomTarget && !targetUids.isEmpty()) {
             actualTargetUids = List.of(targetUids.get(rng.nextInt(targetUids.size())));
         }
         if (sdef.cooldown > 0) {
-            actor.skillCooldowns.put(sdef.id, sdef.cooldown + 1);
+            actor.mutableSkillCooldowns().put(sdef.id, sdef.cooldown + 1);
         }
 
         if (events != null) {
@@ -1988,7 +1989,7 @@ public final class ArenaEngine {
         actor.finaleBonusPct = buffSum(actor, StatKey.FINALE_DAMAGE);
 
         if (!actor.skillCooldowns.isEmpty()) {
-            Iterator<Map.Entry<String, Integer>> it = actor.skillCooldowns.entrySet().iterator();
+            Iterator<Map.Entry<String, Integer>> it = actor.mutableSkillCooldowns().entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<String, Integer> e = it.next();
                 int next = e.getValue() - 1;

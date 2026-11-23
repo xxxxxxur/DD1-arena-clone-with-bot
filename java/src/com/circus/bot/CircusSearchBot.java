@@ -63,13 +63,35 @@ public class CircusSearchBot extends AbstractBot {
     protected final double controlBonus;
     private final EffectiveStats strategicStats = new EffectiveStats();
 
-    // Transposition Table (reused across decisions, stamped by generation to avoid clearing arrays!)
-    private final long[] ttKey = new long[TT_SIZE];
-    private final double[] ttVal = new double[TT_SIZE];
-    private final byte[] ttDepth = new byte[TT_SIZE];
-    private final byte[] ttFlag = new byte[TT_SIZE];
-    private final int[] ttGen = new int[TT_SIZE];
-    private final Action[] ttMove = new Action[TT_SIZE];
+    private static final class TtStorage {
+        final long[] key = new long[TT_SIZE];
+        final double[] val = new double[TT_SIZE];
+        final byte[] depth = new byte[TT_SIZE];
+        final byte[] flag = new byte[TT_SIZE];
+        final int[] gen = new int[TT_SIZE];
+        final Action[] move = new Action[TT_SIZE];
+        int searchGen = 0;
+
+        int nextGen() {
+            if (searchGen == Integer.MAX_VALUE) {
+                Arrays.fill(gen, 0);
+                searchGen = 0;
+            }
+            return ++searchGen;
+        }
+    }
+
+    private static final ThreadLocal<ArrayDeque<TtStorage>> TT_POOL =
+            ThreadLocal.withInitial(() -> new ArrayDeque<>(2));
+
+    // Transposition Table (lazily acquired from thread-local pool on first search, returned on close())
+    private TtStorage tt;
+    private long[] ttKey;
+    private double[] ttVal;
+    private byte[] ttDepth;
+    private byte[] ttFlag;
+    private int[] ttGen;
+    private Action[] ttMove;
     private int searchGen = 0;
 
     // Killer moves per ply
@@ -1280,7 +1302,7 @@ public class CircusSearchBot extends AbstractBot {
         this.timeUp = false;
         this.nodesVisited = 0;
         this.ttHits = 0;
-        this.searchGen++;
+        ensureTt();
         for (int i = 0; i < MAX_KILLER_PLY; i++) {
             killers[i][0] = null;
             killers[i][1] = null;
@@ -1362,5 +1384,39 @@ public class CircusSearchBot extends AbstractBot {
         this.lastTtHits = ttHits;
         this.lastElapsedMs = (System.nanoTime() - tStart) / 1_000_000.0;
         return bestAction;
+    }
+
+    private void ensureTt() {
+        if (tt == null) {
+            ArrayDeque<TtStorage> pool = TT_POOL.get();
+            TtStorage s = pool.pollFirst();
+            if (s == null) s = new TtStorage();
+            this.tt = s;
+            this.ttKey = s.key;
+            this.ttVal = s.val;
+            this.ttDepth = s.depth;
+            this.ttFlag = s.flag;
+            this.ttGen = s.gen;
+            this.ttMove = s.move;
+        }
+        this.searchGen = tt.nextGen();
+    }
+
+    @Override
+    public void close() {
+        TtStorage s = this.tt;
+        if (s != null) {
+            this.tt = null;
+            this.ttKey = null;
+            this.ttVal = null;
+            this.ttDepth = null;
+            this.ttFlag = null;
+            this.ttGen = null;
+            this.ttMove = null;
+            ArrayDeque<TtStorage> pool = TT_POOL.get();
+            if (pool.size() < 2) {
+                pool.addFirst(s);
+            }
+        }
     }
 }

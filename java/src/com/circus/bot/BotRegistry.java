@@ -21,16 +21,23 @@ public final class BotRegistry {
     }
 
     private static final Map<String, BotFactory> CLASS_ALIASES = new ConcurrentHashMap<>();
+    private static final Map<String, BotFactory> RESOLVED_FACTORIES = new ConcurrentHashMap<>();
 
     static {
-        register("unit_neural_search", UnitNeuralSearchBot::new);
-        register("neural_search", NeuralSearchBot::new);
+        registerBuiltin("unit_neural_search", UnitNeuralSearchBot.class, UnitNeuralSearchBot::new);
+        registerBuiltin("neural_search", NeuralSearchBot.class, NeuralSearchBot::new);
         register("lookahead", CircusSearchBot::new);
-        register("search", CircusSearchBot::new);
-        register("fortress", FortressBot::new);
-        register("tactical", TacticalBot::new);
-        register("stress", StressSpecialistBot::new);
-        register("random", RandomBot::new);
+        registerBuiltin("search", CircusSearchBot.class, CircusSearchBot::new);
+        registerBuiltin("fortress", FortressBot.class, FortressBot::new);
+        registerBuiltin("tactical", TacticalBot.class, TacticalBot::new);
+        registerBuiltin("stress", StressSpecialistBot.class, StressSpecialistBot::new);
+        registerBuiltin("random", RandomBot.class, RandomBot::new);
+    }
+
+    private static void registerBuiltin(String alias, Class<? extends Bot> cls, BotFactory factory) {
+        register(alias, factory);
+        RESOLVED_FACTORIES.put(cls.getName(), factory);
+        RESOLVED_FACTORIES.put(cls.getSimpleName(), factory);
     }
 
     private BotRegistry() {}
@@ -218,6 +225,11 @@ public final class BotRegistry {
             return alias.create(ctx);
         }
 
+        BotFactory cached = RESOLVED_FACTORIES.get(raw);
+        if (cached != null) {
+            return cached.create(ctx);
+        }
+
         Class<?> cls = resolveClass(raw);
         if (cls == null) {
             throw new IllegalArgumentException(
@@ -227,36 +239,44 @@ public final class BotRegistry {
             throw new IllegalArgumentException("Class '" + cls.getName() + "' does not implement com.circus.bot.Bot");
         }
 
-        try {
-            Bot instance = null;
-            // 1. Try (BotContext)
-            try {
-                Constructor<?> c = cls.getConstructor(BotContext.class);
-                instance = (Bot) c.newInstance(ctx);
-            } catch (NoSuchMethodException ignored) {}
+        BotFactory factory = buildReflectiveFactory(cls);
+        RESOLVED_FACTORIES.put(raw, factory);
+        RESOLVED_FACTORIES.put(cls.getName(), factory);
+        return factory.create(ctx);
+    }
 
-            // 2. Try (String)
-            if (instance == null) {
-                try {
-                    Constructor<?> c = cls.getConstructor(String.class);
-                    instance = (Bot) c.newInstance(ctx.name());
-                } catch (NoSuchMethodException ignored) {}
-            }
-
-            // 3. Try ()
-            if (instance == null) {
-                Constructor<?> c = cls.getConstructor();
-                instance = (Bot) c.newInstance();
-            }
-
-            if (instance instanceof AbstractBot ab) {
-                if (ctx.name() != null && !ctx.name().isEmpty()) ab.setName(ctx.name());
-                if (ctx.teamConfig() != null) ab.setFixedTeam(ctx.teamConfig());
-            }
-            return instance;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to instantiate Bot class " + cls.getName(), e);
+    private static BotFactory buildReflectiveFactory(Class<?> cls) {
+        Constructor<?> ctxCtor = null;
+        Constructor<?> nameCtor = null;
+        Constructor<?> noArgCtor = null;
+        try { ctxCtor = cls.getConstructor(BotContext.class); } catch (NoSuchMethodException ignored) {}
+        if (ctxCtor == null) {
+            try { nameCtor = cls.getConstructor(String.class); } catch (NoSuchMethodException ignored) {}
         }
+        if (ctxCtor == null && nameCtor == null) {
+            try { noArgCtor = cls.getConstructor(); } catch (NoSuchMethodException e) {
+                throw new RuntimeException("Failed to instantiate Bot class " + cls.getName(), e);
+            }
+        }
+        final Constructor<?> cCtx = ctxCtor;
+        final Constructor<?> cName = nameCtor;
+        final Constructor<?> cNone = noArgCtor;
+        return ctx -> {
+            try {
+                Bot instance;
+                if (cCtx != null) instance = (Bot) cCtx.newInstance(ctx);
+                else if (cName != null) instance = (Bot) cName.newInstance(ctx.name());
+                else instance = (Bot) cNone.newInstance();
+
+                if (instance instanceof AbstractBot ab) {
+                    if (ctx.name() != null && !ctx.name().isEmpty()) ab.setName(ctx.name());
+                    if (ctx.teamConfig() != null) ab.setFixedTeam(ctx.teamConfig());
+                }
+                return instance;
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to instantiate Bot class " + cls.getName(), e);
+            }
+        };
     }
 
     private static Class<?> resolveClass(String name) {

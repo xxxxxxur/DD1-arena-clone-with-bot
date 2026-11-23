@@ -689,8 +689,12 @@ public final class Models {
         public static final int TF_BLEEDING_SKULL = 1 << 10;
         public static final int TF_TINCTURE_OF_IODINE = 1 << 11;
 
-        public final Map<String, Integer> skillUses;
-        public final Map<String, Integer> skillCooldowns;
+        private static final HashMap<String, Integer> EMPTY_INT_MAP = new HashMap<>(0);
+
+        public Map<String, Integer> skillUses;
+        public Map<String, Integer> skillCooldowns;
+        private boolean skillUsesShared;
+        private boolean skillCooldownsShared;
 
         public boolean actedThisRound = false;
         public boolean stunned = false;
@@ -742,12 +746,14 @@ public final class Models {
             this.trinkets = trinkets;
             this.trinketDefs = trinketDefs;
             this.trinketFlags = trinketFlags;
-            this.skillUses = new HashMap<>(4);
-            this.skillCooldowns = new HashMap<>(4);
+            this.skillUses = EMPTY_INT_MAP;
+            this.skillCooldowns = EMPTY_INT_MAP;
+            this.skillUsesShared = true;
+            this.skillCooldownsShared = true;
             this.stealthRounds = startStealth;
             this.aegisBlocks = startAegis;
             this.buffs = buffs;
-            this.dots = new ArrayList<>(4);
+            this.dots = new ArrayList<>(0);
         }
 
         private UnitState(UnitState src) {
@@ -769,8 +775,12 @@ public final class Models {
             this.trinkets = src.trinkets;
             this.trinketDefs = src.trinketDefs;
             this.trinketFlags = src.trinketFlags;
-            this.skillUses = src.skillUses.isEmpty() ? new HashMap<>(2) : new HashMap<>(src.skillUses);
-            this.skillCooldowns = src.skillCooldowns.isEmpty() ? new HashMap<>(2) : new HashMap<>(src.skillCooldowns);
+            if (!src.skillUsesShared) src.skillUsesShared = true;
+            this.skillUses = src.skillUses;
+            this.skillUsesShared = true;
+            if (!src.skillCooldownsShared) src.skillCooldownsShared = true;
+            this.skillCooldowns = src.skillCooldowns;
+            this.skillCooldownsShared = true;
             this.actedThisRound = src.actedThisRound;
             this.stunned = src.stunned;
             this.dazed = src.dazed;
@@ -790,17 +800,33 @@ public final class Models {
             this.isVirtuous = src.isVirtuous;
             this.isAfflicted = src.isAfflicted;
             int bn = src.buffs.size();
-            this.buffs = new ArrayList<>(bn + 2);
+            this.buffs = new ArrayList<>(bn);
             for (int i = 0; i < bn; i++) {
                 ActiveBuff b = src.buffs.get(i);
                 // Permanent buffs (roundsLeft < 0) are immutable and can be shared safely!
                 this.buffs.add(b.roundsLeft < 0 ? b : b.copy());
             }
             int dn = src.dots.size();
-            this.dots = new ArrayList<>(dn + 2);
+            this.dots = new ArrayList<>(dn);
             for (int i = 0; i < dn; i++) {
                 this.dots.add(src.dots.get(i).copy());
             }
+        }
+
+        public Map<String, Integer> mutableSkillUses() {
+            if (skillUsesShared) {
+                skillUses = skillUses.isEmpty() ? new HashMap<>(4) : new HashMap<>(skillUses);
+                skillUsesShared = false;
+            }
+            return skillUses;
+        }
+
+        public Map<String, Integer> mutableSkillCooldowns() {
+            if (skillCooldownsShared) {
+                skillCooldowns = skillCooldowns.isEmpty() ? new HashMap<>(4) : new HashMap<>(skillCooldowns);
+                skillCooldownsShared = false;
+            }
+            return skillCooldowns;
         }
 
         public UnitState copy() {
