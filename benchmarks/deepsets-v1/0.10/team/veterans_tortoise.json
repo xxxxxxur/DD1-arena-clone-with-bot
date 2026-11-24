@@ -1,0 +1,95 @@
+{
+  "id": "veterans_tortoise",
+  "name": "老兵龟阵 AI",
+  "name_en": "Veteran's Tortoise (Cru/MAA/HM/Ant)",
+  "name_zh": "老兵龟阵（十兵狗古）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_wall",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.25,
+    "damage_weight": 0.95,
+    "stun_weight": 1.0,
+    "stress_weight": 1.15,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.35,
+    "strategic_eval": true,
+    "mitigation_weight": 1.0,
+    "pressure_weight": 2.0,
+    "setup_weight": 1.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": -100.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Veteran's Tortoise",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "bulwark_of_faith",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "protector_kite",
+          "numbing_incense"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_rush",
+          "hounds_harry",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "padded_armguard"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "festering_vapours",
+          "cower",
+          "fortifying_vapours",
+          "invigorating_vapours"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "rotting_trophy"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

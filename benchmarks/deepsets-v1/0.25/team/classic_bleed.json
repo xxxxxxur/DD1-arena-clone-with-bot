@@ -1,0 +1,95 @@
+{
+  "id": "classic_bleed",
+  "name": "经典流血 AI",
+  "name_en": "Classic Bleed (HM/Fla/Jes/Ves)",
+  "name_zh": "经典流血（狗苦丑修）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.0,
+    "damage_weight": 1.0,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Classic Bleed",
+    "heroes": [
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_rush",
+          "hounds_harry",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "attack_whistle",
+          "monkey_paw"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "crimson_hook",
+          "exotic_snuff"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "blood_red_coin",
+          "monkey_paw"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "silver_syringe"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

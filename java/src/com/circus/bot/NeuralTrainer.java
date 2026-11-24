@@ -13,6 +13,10 @@ public final class NeuralTrainer {
 
     static TeamConfig lineup(Random rng) {
         if (!PRESETS.isEmpty() && rng.nextInt(3) == 0) return PRESETS.get(rng.nextInt(PRESETS.size()));
+        return randomLineup(rng);
+    }
+
+    static TeamConfig randomLineup(Random rng) {
         GameData data = GameData.get();
         var heroes = new ArrayList<>(data.heroOrder);
         Collections.shuffle(heroes, rng);

@@ -1,0 +1,98 @@
+{
+  "id": "beginner_stress",
+  "name": "入门压力 AI",
+  "name_en": "Beginner Stress (Cru/MAA/Abo/HM)",
+  "name_zh": "入门压力（十兵狼狗）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "stress",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.05,
+    "damage_weight": 1.0,
+    "stun_weight": 1.1,
+    "stress_weight": 1.55,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": true,
+    "mitigation_weight": 0.5,
+    "pressure_weight": 1.5,
+    "setup_weight": 0.5,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Beginner Stress",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "bulwark_of_faith",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "eerie_eye"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "abomination",
+        "skills": [
+          "transform",
+          "manacles",
+          "vomit",
+          "absolution",
+          "rake",
+          "rage",
+          "slam"
+        ],
+        "trinkets": [
+          "wretch_cloak",
+          "retarius_net"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_rush",
+          "hounds_harry",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "crimson_hook"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

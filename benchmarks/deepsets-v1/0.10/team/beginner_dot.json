@@ -1,0 +1,95 @@
+{
+  "id": "beginner_dot",
+  "name": "入门持续伤害 AI",
+  "name_en": "Beginner DoT (SB/Fla/Jes/Ant)",
+  "name_zh": "入门持续伤害（破苦丑古）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.0,
+    "damage_weight": 1.0,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Beginner DoT",
+    "heroes": [
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "break_guard",
+          "adders_kiss",
+          "expose",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "graceful_anklet"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "rain_of_sorrows",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "crimson_hook",
+          "crushed_hemlock"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "spiked_bat",
+          "eagle_eye_talisman"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "festering_vapours",
+          "cower",
+          "fortifying_vapours",
+          "invigorating_vapours"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "rotting_trophy"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

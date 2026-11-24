@@ -24,6 +24,7 @@ public final class BotRegistry {
     private static final Map<String, BotFactory> RESOLVED_FACTORIES = new ConcurrentHashMap<>();
 
     static {
+        registerBuiltin("deepsets_neural", DeepSetsBot.class, DeepSetsBot::new);
         registerBuiltin("unit_neural_search", UnitNeuralSearchBot.class, UnitNeuralSearchBot::new);
         registerBuiltin("neural_search", NeuralSearchBot.class, NeuralSearchBot::new);
         register("lookahead", CircusSearchBot::new);
@@ -64,6 +65,7 @@ public final class BotRegistry {
     public static List<Map<String, String>> availableBotClasses() {
         List<Map<String, String>> out = new ArrayList<>();
         Set<String> seenClasses = new LinkedHashSet<>();
+        addBotOption(out, seenClasses, "deepsets_neural", "DeepSetsBot (通用神经搜索)", DeepSetsBot.class.getName());
 
         addBotOption(out, seenClasses, "unit_neural_search", "UnitNeuralSearchBot (单位级神经搜索)", UnitNeuralSearchBot.class.getName());
         addBotOption(out, seenClasses, "neural_search", "NeuralSearchBot (轻量神经搜索)", NeuralSearchBot.class.getName());

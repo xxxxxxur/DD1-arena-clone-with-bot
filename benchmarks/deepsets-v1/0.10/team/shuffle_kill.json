@@ -1,0 +1,95 @@
+{
+  "id": "shuffle_kill",
+  "name": "乱位斩杀 AI",
+  "name_en": "Shuffle Execute (Cru/SB/HWM/Ves)",
+  "name_zh": "乱位斩杀（十破强修）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "shuffle_kill",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.15,
+    "kill_weight": 1.15,
+    "survival_weight": 1.0,
+    "damage_weight": 1.18,
+    "stun_weight": 1.1,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.35,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Shuffle Execute",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "pierce",
+          "break_guard",
+          "expose",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "retarius_net",
+          "eerie_eye"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "wicked_slice",
+          "point_blank_shot",
+          "take_aim",
+          "duelist_advance"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "parrying_dagger"
+        ],
+        "variant": "D",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "tome_of_fury",
+          "brass_knuckles"
+        ],
+        "variant": "B",
+        "name": ""
+      }
+    ]
+  }
+}

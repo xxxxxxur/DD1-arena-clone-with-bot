@@ -1,0 +1,98 @@
+{
+  "id": "zealous_rakeshot",
+  "name": "狂热爪击 AI",
+  "name_en": "Zealous Rakeshot (Cru/Abo/HWM/MAA)",
+  "name_zh": "狂热爪击（十狼强兵）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "stress",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.05,
+    "damage_weight": 1.0,
+    "stun_weight": 1.1,
+    "stress_weight": 1.55,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": true,
+    "mitigation_weight": 0.5,
+    "pressure_weight": 1.5,
+    "setup_weight": 0.5,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Zealous Rakeshot",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "bulwark_of_faith",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "abomination",
+        "skills": [
+          "transform",
+          "manacles",
+          "vomit",
+          "absolution",
+          "rake",
+          "rage",
+          "slam"
+        ],
+        "trinkets": [
+          "clasp_of_the_beast",
+          "wretch_cloak"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "wicked_slice",
+          "grape_shot_blast",
+          "take_aim",
+          "duelist_advance"
+        ],
+        "trinkets": [
+          "grim_bandana",
+          "pitfighter_helm"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "numbing_incense",
+          "protector_kite"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

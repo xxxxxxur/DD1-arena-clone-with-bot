@@ -1,0 +1,98 @@
+{
+  "id": "immortal_musketeer",
+  "name": "不朽火枪 AI",
+  "name_en": "Immortal Musketeer (Fla/Abo/MAA/Mus)",
+  "name_zh": "不朽火枪（苦狼兵枪）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_wall",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.25,
+    "damage_weight": 0.95,
+    "stun_weight": 1.0,
+    "stress_weight": 1.15,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.35,
+    "strategic_eval": true,
+    "mitigation_weight": 1.0,
+    "pressure_weight": 2.0,
+    "setup_weight": 1.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": -100.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Immortal Musketeer",
+    "heroes": [
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "gauntlet_of_absolution",
+          "exotic_snuff"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "abomination",
+        "skills": [
+          "transform",
+          "manacles",
+          "vomit",
+          "absolution",
+          "rake",
+          "rage",
+          "slam"
+        ],
+        "trinkets": [
+          "wretch_cloak",
+          "shattered_padlock"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "pitfighter_helm",
+          "insignia_of_rank"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "musketeer",
+        "skills": [
+          "aimed_shot",
+          "smokescreen",
+          "buckshot",
+          "patch_up"
+        ],
+        "trinkets": [
+          "medic_fullplate",
+          "silver_syringe"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "id": "cant_touch_this",
+  "name": "闪避压力 AI",
+  "name_en": "Can't Touch This (SB/MAA/GR/Ant)",
+  "name_zh": "闪避压力（破兵盗古）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "stress",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.05,
+    "damage_weight": 1.0,
+    "stun_weight": 1.1,
+    "stress_weight": 1.55,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": true,
+    "mitigation_weight": 0.5,
+    "pressure_weight": 1.5,
+    "setup_weight": 0.5,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Can't Touch This",
+    "heroes": [
+      {
+        "hero_id": "shieldbreaker",
+        "skills": [
+          "break_guard",
+          "adders_kiss",
+          "expose",
+          "serpents_sway"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "graceful_anklet"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "retribution",
+          "bolster"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "protector_kite"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "grave_robber",
+        "skills": [
+          "pick",
+          "shadow_fade",
+          "poison_dart",
+          "toxin_trickery"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "satchel_of_dirty_tricks"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "festering_vapours",
+          "cower",
+          "fortifying_vapours",
+          "invigorating_vapours"
+        ],
+        "trinkets": [
+          "materia_pestis",
+          "rotting_trophy"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

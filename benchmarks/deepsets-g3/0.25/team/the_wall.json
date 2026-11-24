@@ -1,0 +1,95 @@
+{
+  "id": "the_wall",
+  "name": "城墙铁壁 AI",
+  "name_en": "The Wall (Lep/Cru/MAA/Ves)",
+  "name_zh": "城墙铁壁（麻十兵修）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "iron_wall",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.25,
+    "damage_weight": 0.95,
+    "stun_weight": 1.0,
+    "stress_weight": 1.15,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.35,
+    "strategic_eval": true,
+    "mitigation_weight": 1.0,
+    "pressure_weight": 2.0,
+    "setup_weight": 1.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": -100.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "The Wall",
+    "heroes": [
+      {
+        "hero_id": "leper",
+        "skills": [
+          "chop",
+          "revenge",
+          "withstand",
+          "intimidate"
+        ],
+        "trinkets": [
+          "jagged_chopper",
+          "gladiator_helmet"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "pitfighter_helm"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "man_at_arms",
+        "skills": [
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
+        ],
+        "trinkets": [
+          "protector_kite",
+          "numbing_incense"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "silver_syringe"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

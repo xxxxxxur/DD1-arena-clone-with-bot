@@ -1,0 +1,95 @@
+{
+  "id": "bleed_damage_hybrid",
+  "name": "流血爆发混合 AI",
+  "name_en": "Bleed Damage Hybrid (Fla/Cru/HWM/Jes)",
+  "name_zh": "流血爆发混合（苦十强丑）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.0,
+    "damage_weight": 1.0,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Bleed Damage Hybrid",
+    "heroes": [
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "exotic_snuff",
+          "gauntlet_of_absolution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "writ_of_execution"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "highwayman",
+        "skills": [
+          "wicked_slice",
+          "grape_shot_blast",
+          "take_aim",
+          "duelist_advance"
+        ],
+        "trinkets": [
+          "parrying_dagger",
+          "the_finisher"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "the_finisher"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

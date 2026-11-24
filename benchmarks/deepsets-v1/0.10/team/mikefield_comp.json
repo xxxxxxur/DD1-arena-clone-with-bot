@@ -1,0 +1,95 @@
+{
+  "id": "mikefield_comp",
+  "name": "Mikefield 阵容 AI",
+  "name_en": "Mikefield Comp (Cru/Jes/GR/Ves)",
+  "name_zh": "Mikefield 阵容（十丑盗修）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.0,
+    "damage_weight": 1.0,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Mikefield Comp",
+    "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "sacred_blade",
+          "writ_of_execution"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "reaper_shroud"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "grave_robber",
+        "skills": [
+          "pick",
+          "lunge",
+          "shadow_fade",
+          "toxin_trickery"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "cloak_and_dagger"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "silver_syringe"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

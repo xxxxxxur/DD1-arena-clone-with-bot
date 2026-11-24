@@ -1,0 +1,95 @@
+{
+  "id": "bleed_blight_torture",
+  "name": "流血腐蚀折磨 AI",
+  "name_en": "Bleed & Blight Torture (HM/PD/Fla/Ant)",
+  "name_zh": "流血腐蚀折磨（狗医苦古）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "balanced",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.0,
+    "survival_weight": 1.0,
+    "damage_weight": 1.0,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 1.0,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Bleed & Blight Torture",
+    "heroes": [
+      {
+        "hero_id": "houndmaster",
+        "skills": [
+          "hounds_rush",
+          "hounds_harry",
+          "guard_dog",
+          "lick_wounds"
+        ],
+        "trinkets": [
+          "attack_whistle",
+          "monkey_paw"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "plague_doctor",
+        "skills": [
+          "noxious_blast",
+          "plague_grenade",
+          "battlefield_medicine",
+          "disorienting_blast"
+        ],
+        "trinkets": [
+          "volatile_concoction",
+          "rotting_trophy"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "rain_of_sorrows",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "crimson_hook",
+          "crushed_hemlock"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "kris_stab",
+          "festering_vapours",
+          "cower",
+          "fortifying_vapours"
+        ],
+        "trinkets": [
+          "materia_pestis",
+          "monkey_paw"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

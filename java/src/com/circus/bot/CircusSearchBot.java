@@ -118,7 +118,8 @@ public class CircusSearchBot extends AbstractBot {
     private int lastNodesVisited = 0;
     private int lastTtHits = 0;
     private double lastElapsedMs = 0.0;
-    private double lastBestScore = 0.0;
+    private double lastBestScore = Double.NaN;
+    double lastSearchScore() { return lastBestScore; }
     private Action lastBestAction = null;
     protected String profileName = "balanced";
 
@@ -1229,7 +1230,7 @@ public class CircusSearchBot extends AbstractBot {
 
         int curTeam = engine.state.activeTeam;
         boolean maximizing = (curTeam == myTeam);
-        int width = (depth >= 3) ? branchWidth : (depth == 2 ? Math.max(3, branchWidth - 1) : Math.max(2, branchWidth - 2));
+        int width = nodeBeamWidth(depth, ply);
         List<ScoredAction> cands = orderedCandidates(engine, curTeam, width, ttHint, ply);
         if (cands.isEmpty()) return evaluateState(engine, myTeam);
 
@@ -1319,6 +1320,21 @@ public class CircusSearchBot extends AbstractBot {
         }
     }
 
+    /** Hook for subclasses to customize root candidate selection/ordering. */
+    protected List<ScoredAction> selectRootCandidates(ArenaEngine engine, int myTeam, List<Action> legal) {
+        return orderedCandidates(engine, myTeam, rootWidth, null, 0, legal);
+    }
+
+    /** Hook for subclasses to customize root prior blending weight per iterative-deepening depth. */
+    protected double rootPriorWeight(int depth) {
+        return (depth == 1) ? 0.25 : (depth == 2 ? 0.12 : 0.04);
+    }
+
+    /** Hook for subclasses to customize per-ply internal beam width. */
+    protected int nodeBeamWidth(int depth, int ply) {
+        return (depth >= 3) ? branchWidth : (depth == 2 ? Math.max(3, branchWidth - 1) : Math.max(2, branchWidth - 2));
+    }
+
     /** Allows specialized evaluators to include additional state in their transposition keys. */
     protected long searchStateHash(ArenaEngine engine) {
         if (!detailedTtHash) return engine.computeStateHash();
@@ -1355,6 +1371,10 @@ public class CircusSearchBot extends AbstractBot {
 
     @Override
     public Action chooseAction(Observation obs, ArenaEngine engine) {
+        lastBestScore = Double.NaN;
+        lastDepthReached = lastNodesVisited = lastTtHits = 0;
+        lastElapsedMs = 0;
+        lastBestAction = null;
         List<Action> legal = obs.legalActions;
         if (legal == null || legal.isEmpty()) {
             throw new IllegalStateException("No legal actions available");
@@ -1375,7 +1395,7 @@ public class CircusSearchBot extends AbstractBot {
         }
 
         int myTeam = obs.viewerTeam;
-        List<ScoredAction> initialRanked = orderedCandidates(engine, myTeam, rootWidth, null, 0, legal);
+        List<ScoredAction> initialRanked = selectRootCandidates(engine, myTeam, legal);
         if (initialRanked.isEmpty()) return legal.get(0);
         if (initialRanked.size() == 1) return initialRanked.get(0).action;
 
@@ -1399,7 +1419,7 @@ public class CircusSearchBot extends AbstractBot {
             double alpha = -1e12;
             boolean completedAll = true;
             int rootSamples = (depth == 1) ? 3 : (depth == 2 ? 2 : 1);
-            double priorW = (depth == 1) ? 0.25 : (depth == 2 ? 0.12 : 0.04);
+            double priorW = rootPriorWeight(depth);
 
             for (int idx = 0, rn = rootMoves.size(); idx < rn; idx++) {
                 if (System.nanoTime() >= deadlineNs) {
