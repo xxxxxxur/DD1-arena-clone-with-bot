@@ -46,6 +46,7 @@ public final class RoomManager {
         private final ReentrantLock lock = new ReentrantLock();
         private volatile Thread botLoopThread = null;
         private volatile int matchEpoch = 0;
+        public volatile Map<String, Object> lastSearchStats = null;
 
         public Room(String roomId, String mode, String arenaTier,
                     String bot0Type, String bot1Type, String bot0Preset, String bot1Preset) {
@@ -117,6 +118,9 @@ public final class RoomManager {
                 msg.put("events", events);
                 msg.put("observation", obsMap);
                 msg.put("room", status);
+                if (lastSearchStats != null) {
+                    msg.put("search_stats", lastSearchStats);
+                }
                 sendMany(set, msg);
             }
         }
@@ -193,6 +197,16 @@ public final class RoomManager {
                         if (bot == null) return;
                         Observation obs = this.engine.getObservation(curActive);
                         Action action = bot.chooseAction(obs, this.engine);
+                        Map<String, Object> stats = bot.getLastSearchStats();
+                        if (stats != null) {
+                            Map<String, Object> enriched = new LinkedHashMap<>(stats);
+                            enriched.put("team", curActive);
+                            enriched.put("round", this.engine.state.roundNum);
+                            enriched.put("turn", this.engine.state.turnCount + 1);
+                            this.lastSearchStats = enriched;
+                        } else {
+                            this.lastSearchStats = null;
+                        }
                         List<CombatEvent> evs = this.engine.step(action);
                         List<Map<String, Object>> evMaps = new ArrayList<>(evs.size());
                         for (CombatEvent e : evs) evMaps.add(e.toMap());
@@ -281,6 +295,19 @@ public final class RoomManager {
 
     public Room createRoom(String mode, String arenaTier,
                            String bot0Type, String bot1Type, String bot0Preset, String bot1Preset) {
+        return createRoom(mode, arenaTier, bot0Type, bot1Type, bot0Preset, bot1Preset, null, null, null, null);
+    }
+
+    public Room createRoom(String mode, String arenaTier,
+                           String bot0Type, String bot1Type, String bot0Preset, String bot1Preset,
+                           String bot0Class, String bot1Class) {
+        return createRoom(mode, arenaTier, bot0Type, bot1Type, bot0Preset, bot1Preset, bot0Class, bot1Class, null, null);
+    }
+
+    public Room createRoom(String mode, String arenaTier,
+                           String bot0Type, String bot1Type, String bot0Preset, String bot1Preset,
+                           String bot0Class, String bot1Class,
+                           Double bot0Budget, Double bot1Budget) {
         String rid = genRoomId();
         while (rooms.containsKey(rid)) rid = genRoomId();
 
@@ -290,14 +317,22 @@ public final class RoomManager {
         room.teamConfigs[1] = presets.get(1 % presets.size()).team.copy();
 
         if ("vs_bot".equals(mode)) {
-            Bot bot = BotRegistry.create(bot1Type, bot1Preset);
+            Bot bot = BotRegistry.create(bot1Type, null, bot1Preset, null, bot1Budget, bot1Class);
             room.bots.put(1, bot);
-            room.playerNames[1] = bot.getName() + " (AI)";
+            String label = bot.getName();
+            if (bot1Class != null && !bot1Class.isBlank()) {
+                label += " [" + shortBotClassName(bot1Class) + "]";
+            }
+            room.playerNames[1] = label + " (AI)";
             room.teamConfigs[1] = bot.chooseTeam(ThreadLocalRandom.current().nextInt(1, 9999));
             room.ready[1] = true;
         } else if ("bot_vs_bot".equals(mode)) {
-            Bot b0 = BotRegistry.create(bot0Type, "P1 " + capitalize(bot0Type) + "Bot", bot0Preset, null, null);
-            Bot b1 = BotRegistry.create(bot1Type, "P2 " + capitalize(bot1Type) + "Bot", bot1Preset, null, null);
+            String n0 = "P1 " + capitalize(bot0Type)
+                    + (bot0Class != null && !bot0Class.isBlank() ? "@" + shortBotClassName(bot0Class) : "Bot");
+            String n1 = "P2 " + capitalize(bot1Type)
+                    + (bot1Class != null && !bot1Class.isBlank() ? "@" + shortBotClassName(bot1Class) : "Bot");
+            Bot b0 = BotRegistry.create(bot0Type, n0, bot0Preset, null, bot0Budget, bot0Class);
+            Bot b1 = BotRegistry.create(bot1Type, n1, bot1Preset, null, bot1Budget, bot1Class);
             room.bots.put(0, b0);
             room.bots.put(1, b1);
             room.playerNames[0] = b0.getName();
@@ -310,6 +345,12 @@ public final class RoomManager {
 
         rooms.put(rid, room);
         return room;
+    }
+
+    private static String shortBotClassName(String cls) {
+        String trimmed = cls.trim();
+        int dot = trimmed.lastIndexOf('.');
+        return dot >= 0 ? trimmed.substring(dot + 1) : trimmed;
     }
 
     public Room getRoom(String roomId) {

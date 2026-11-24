@@ -118,6 +118,9 @@ public class CircusSearchBot extends AbstractBot {
     private int lastNodesVisited = 0;
     private int lastTtHits = 0;
     private double lastElapsedMs = 0.0;
+    private double lastBestScore = 0.0;
+    private Action lastBestAction = null;
+    protected String profileName = "balanced";
 
     // Per-search runtime counters
     private long deadlineNs;
@@ -161,7 +164,7 @@ public class CircusSearchBot extends AbstractBot {
             double controlBonus
     ) {
         super(name != null ? name : "CircusSearchBot", presetId);
-        this.timeBudgetSec = Math.min(0.46, Math.max(0.005, timeBudgetSec));
+        this.timeBudgetSec = Math.min(10.0, Math.max(0.005, timeBudgetSec));
         this.profile = (profile != null) ? profile : PROFILES.get("balanced");
         this.maxDepth = Math.max(1, maxDepth);
         this.rootWidth = Math.max(2, rootWidth);
@@ -229,6 +232,27 @@ public class CircusSearchBot extends AbstractBot {
     public int getLastNodesVisited() { return lastNodesVisited; }
     public int getLastTtHits() { return lastTtHits; }
     public double getLastElapsedMs() { return lastElapsedMs; }
+
+    @Override
+    public Map<String, Object> getLastSearchStats() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("bot_name", this.name);
+        m.put("bot_class", this.getClass().getSimpleName());
+        m.put("depth", lastDepthReached);
+        m.put("nodes", lastNodesVisited);
+        m.put("tt_hits", lastTtHits);
+        m.put("elapsed_ms", Math.round(lastElapsedMs * 10.0) / 10.0);
+        m.put("budget_ms", Math.round(timeBudgetSec * 1000.0));
+        m.put("nps", lastElapsedMs > 0.05 ? Math.round(lastNodesVisited / (lastElapsedMs / 1000.0)) : 0L);
+        m.put("best_score", Double.isFinite(lastBestScore) ? Math.round(lastBestScore * 100.0) / 100.0 : 0.0);
+        if (lastBestAction != null) {
+            m.put("action_kind", lastBestAction.kind);
+            m.put("skill_id", lastBestAction.skillId);
+            m.put("actor_uid", lastBestAction.actorUid);
+            m.put("target_uids", lastBestAction.targetUids);
+        }
+        return m;
+    }
 
     private boolean checkDeadline() {
         if (timeUp) return true;
@@ -304,7 +328,10 @@ public class CircusSearchBot extends AbstractBot {
     }
 
     private double unitStateScore(UnitState u, int oppUnacted, boolean isMine) {
-        SearchProfile p = this.profile;
+        return unitStateScore(u, oppUnacted, isMine, this.profile);
+    }
+
+    private double unitStateScore(UnitState u, int oppUnacted, boolean isMine, SearchProfile p) {
         double valW = heroValueWeight(u);
         double base = 1850.0 * (isMine ? p.survivalWeight : p.killWeight) * valW;
 
@@ -469,6 +496,18 @@ public class CircusSearchBot extends AbstractBot {
     }
 
     public double evaluateState(ArenaEngine engine, int myTeam) {
+        return evaluateStateWithProfile(engine, myTeam, this.profile, this.strategicEval);
+    }
+
+    /**
+     * Evaluates the exact balanced baseline (strategic_eval=false) that residual neural models
+     * (ArenaValue, TacticalFeatures, UnitValue) were trained against.
+     */
+    protected final double evaluateBalancedBase(ArenaEngine engine, int myTeam) {
+        return evaluateStateWithProfile(engine, myTeam, PROFILES.get("balanced"), false);
+    }
+
+    private double evaluateStateWithProfile(ArenaEngine engine, int myTeam, SearchProfile prof, boolean includeStrategic) {
         if (engine.state.finished) {
             if (engine.state.winner != null && engine.state.winner == myTeam) {
                 return 100000.0 - engine.state.roundNum * 5.0;
@@ -500,18 +539,18 @@ public class CircusSearchBot extends AbstractBot {
         double myScore = 0.0;
         for (int i = 0, n = myList.size(); i < n; i++) {
             UnitState u = myList.get(i);
-            if (u.alive && !u.isCorpse) myScore += unitStateScore(u, enUnacted, true);
+            if (u.alive && !u.isCorpse) myScore += unitStateScore(u, enUnacted, true, prof);
         }
         double enScore = 0.0;
         for (int i = 0, n = enList.size(); i < n; i++) {
             UnitState u = enList.get(i);
-            if (u.alive && !u.isCorpse) enScore += unitStateScore(u, myUnacted, false);
+            if (u.alive && !u.isCorpse) enScore += unitStateScore(u, myUnacted, false, prof);
         }
 
         double corpseTerm = (enCorpses - myCorpses) * 14.0;
         double turnBonus = (engine.state.activeTeam == myTeam) ? 24.0 : -24.0;
         double base = myScore - enScore + corpseTerm + turnBonus;
-        if (!strategicEval) return base;
+        if (!includeStrategic) return base;
         return base + strategicValue(engine, myTeam) - strategicValue(engine, oppTeam);
     }
 
@@ -1084,8 +1123,8 @@ public class CircusSearchBot extends AbstractBot {
                         EffectiveStats tstats = engine.computeEffectiveStats(t, null, "", scratchB);
                         double pHit = ArenaEngine.computeHitChance(sdef.acc + astats.values[StatKey.ACC], tstats.values[StatKey.DODGE]) / 100.0;
 
-                        // 2a. Death's Door execution (ply <= 3 or multi-sample): exact pKill * V(kill) + (1 - pKill) * V(survive)
-                        if (t.atDeathsDoor && t.hp <= 0 && (ply <= 3 || samples > 1)) {
+                        // 2a. Death's Door execution (ply <= 5, quiescence, or multi-sample): exact pKill * V(kill) + (1 - pKill) * V(survive)
+                        if (t.atDeathsDoor && t.hp <= 0 && (ply <= 5 || depth <= 0 || samples > 1)) {
                             double dbBonus = sdef.deathblowBonus + astats.values[StatKey.DEATHBLOW_CHANCE];
                             if (t.markedRounds > 0 && ("aimed_shot".equals(sdef.id) || "sniper_shot".equals(sdef.id))) dbBonus += 30.0;
                             if (t.isAfflicted && "bloodlet".equals(sdef.id)) dbBonus += 40.0;
@@ -1135,10 +1174,37 @@ public class CircusSearchBot extends AbstractBot {
         return total / Math.max(1, done);
     }
 
+    private static boolean needsDeathsDoorQuiescence(ArenaEngine engine) {
+        int active = engine.state.activeTeam;
+        int opp = 1 - active;
+        boolean oppUnacted = false;
+        ArrayList<UnitState> oppList = engine.state.teams[opp];
+        for (int i = 0, n = oppList.size(); i < n; i++) {
+            UnitState u = oppList.get(i);
+            if (!u.alive || u.isCorpse) continue;
+            if (u.atDeathsDoor && u.hp <= 0) return true;
+            if (!u.actedThisRound && !u.stunned) oppUnacted = true;
+        }
+        if (oppUnacted) {
+            ArrayList<UnitState> myList = engine.state.teams[active];
+            for (int i = 0, n = myList.size(); i < n; i++) {
+                UnitState u = myList.get(i);
+                if (u.alive && !u.isCorpse && u.atDeathsDoor && u.hp <= 0) return true;
+            }
+        }
+        return false;
+    }
+
     private double alphabeta(ArenaEngine engine, int depth, int ply, double alpha, double beta, int myTeam) {
         nodesVisited++;
-        if (engine.state.finished || depth <= 0 || checkDeadline()) {
+        if (engine.state.finished || checkDeadline()) {
             return evaluateState(engine, myTeam);
+        }
+        if (depth <= 0) {
+            // Death's Door quiescence: extend up to 2 plies (depth 0 -> -1 -> -2) while DD lethal/rescue is live
+            if (depth <= -2 || ply >= MAX_KILLER_PLY - 2 || !needsDeathsDoorQuiescence(engine)) {
+                return evaluateState(engine, myTeam);
+            }
         }
 
         // Transposition Table probe
@@ -1383,6 +1449,8 @@ public class CircusSearchBot extends AbstractBot {
         this.lastNodesVisited = nodesVisited;
         this.lastTtHits = ttHits;
         this.lastElapsedMs = (System.nanoTime() - tStart) / 1_000_000.0;
+        this.lastBestScore = bestOverallScore;
+        this.lastBestAction = bestAction;
         return bestAction;
     }
 

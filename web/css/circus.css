@@ -1467,3 +1467,52 @@ select, input[type="text"], input[type="number"] {
   color: #b5a08b;
   font-size: 11.5px;
 }
+
+/* Live Single-Match Bot Search Console */
+.bot-search-console {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 35;
+  width: 300px;
+  background: rgba(12, 8, 9, 0.90);
+  border: 1.5px solid #8c6b3b;
+  border-radius: 6px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.85);
+  color: #e6d6be;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  pointer-events: auto;
+}
+.bsc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 9px;
+  background: rgba(45, 25, 18, 0.75);
+  border-bottom: 1px solid rgba(232, 195, 116, 0.28);
+  font-weight: 700;
+  color: #e8c374;
+}
+.bsc-close {
+  background: none;
+  border: none;
+  color: #b5a08b;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 3px;
+}
+.bsc-close:hover { color: #fff; }
+.bsc-body {
+  padding: 7px 9px;
+}
+.bsc-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bsc-label { color: #9c8a78; }
+.bsc-val { color: #f0e4d2; font-weight: 600; text-align: right; }
+.bsc-val.good { color: #7ed8ff; }
+.bsc-val.gold { color: #ffd480; }

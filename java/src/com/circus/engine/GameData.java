@@ -1,6 +1,7 @@
 package com.circus.engine;
 
 import com.circus.Config;
+import com.circus.bot.TeamConfigStore;
 import com.circus.engine.Models.*;
 import com.circus.util.Json;
 
@@ -113,9 +114,18 @@ public final class GameData {
     }
 
     public List<PresetDef> getPresets() {
-        List<PresetDef> out = new ArrayList<>(basePresets.size() + 16);
+        Map<String, TeamConfigStore.TeamEntry> teamEntries = TeamConfigStore.loadAll();
+        List<PresetDef> out = new ArrayList<>(teamEntries.size() + basePresets.size() + 16);
+        Set<String> seen = new HashSet<>();
+        for (TeamConfigStore.TeamEntry e : teamEntries.values()) {
+            if (seen.add(e.id())) {
+                out.add(new PresetDef(e.id(), e.nameEn(), e.nameZh(), e.team().copy()));
+            }
+        }
         for (PresetDef p : basePresets) {
-            out.add(new PresetDef(p.id, p.nameEn, p.nameZh, p.team.copy()));
+            if (seen.add(p.id)) {
+                out.add(new PresetDef(p.id, p.nameEn, p.nameZh, p.team.copy()));
+            }
         }
         out.addAll(loadOfficialPracticePresets());
         return out;

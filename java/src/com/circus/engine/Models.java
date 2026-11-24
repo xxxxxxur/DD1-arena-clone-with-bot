@@ -514,6 +514,12 @@ public final class Models {
             this.descriptionEn = descriptionEn;
             this.descriptionZh = descriptionZh;
         }
+
+        public boolean allowsHero(String heroId) {
+            if (heroClass.isEmpty() || heroClass.equals(heroId)) return true;
+            return ("arbalest".equals(heroClass) && "musketeer".equals(heroId))
+                    || ("musketeer".equals(heroClass) && "arbalest".equals(heroId));
+        }
     }
 
     public static final class TraitDef {
@@ -707,13 +713,16 @@ public final class Models {
         public String guardingUid = null;
         public String guardedByUid = null;
         public int guardRounds = 0;
+        public int guardBlockedRounds = 0;
         public int aegisBlocks = 0;
+        public int deathblowResPenalty = 0;
         // Bitmask of status timers freshly applied to self on the current turn (skip same-turn decrement)
         public int freshStatusMask = 0;
         public static final int FRESH_MARK = 1 << 0;
         public static final int FRESH_STEALTH = 1 << 1;
         public static final int FRESH_RIPOSTE = 1 << 2;
         public static final int FRESH_GUARD = 1 << 3;
+        public static final int FRESH_GUARD_BLOCKED = 1 << 4;
 
         public boolean isBeast = false;
         public boolean transformedThisRound = false;
@@ -791,7 +800,9 @@ public final class Models {
             this.guardingUid = src.guardingUid;
             this.guardedByUid = src.guardedByUid;
             this.guardRounds = src.guardRounds;
+            this.guardBlockedRounds = src.guardBlockedRounds;
             this.aegisBlocks = src.aegisBlocks;
+            this.deathblowResPenalty = src.deathblowResPenalty;
             this.freshStatusMask = src.freshStatusMask;
             this.isBeast = src.isBeast;
             this.transformedThisRound = src.transformedThisRound;

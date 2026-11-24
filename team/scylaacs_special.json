@@ -1,8 +1,8 @@
 {
-  "id": "mark_execution",
-  "name": "标记斩杀队 AI",
-  "name_en": "Mark & Execution",
-  "name_zh": "标记斩杀队",
+  "id": "scylaacs_special",
+  "name": "Scylaac 特调 AI",
+  "name_en": "Scylaac's Special (Cru/BH/Arb/Ves)",
+  "name_zh": "Scylaac 特调（十赏弩修）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "direct_kill",
@@ -28,49 +28,34 @@
     "control_bonus": 0.0
   },
   "team": {
-    "name": "Mark & Execution",
+    "name": "Scylaac's Special",
     "heroes": [
+      {
+        "hero_id": "crusader",
+        "skills": [
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "eagle_eye_talisman"
+        ],
+        "variant": "A",
+        "name": ""
+      },
       {
         "hero_id": "bounty_hunter",
         "skills": [
-          "collect_bounty",
           "target_tag",
           "come_hither",
-          "finish_him"
+          "finish_him",
+          "hook_and_slice"
         ],
         "trinkets": [
-          "bounty_notice",
-          "heartseeker"
-        ],
-        "variant": "C",
-        "name": ""
-      },
-      {
-        "hero_id": "highwayman",
-        "skills": [
-          "duelist_advance",
-          "wicked_slice",
-          "pistol_shot",
-          "point_blank_shot"
-        ],
-        "trinkets": [
-          "duelist_pistol",
-          "parrying_dagger"
-        ],
-        "variant": "B",
-        "name": ""
-      },
-      {
-        "hero_id": "houndmaster",
-        "skills": [
-          "hounds_rush",
-          "hounds_harry",
-          "whistle",
-          "lick_wounds"
-        ],
-        "trinkets": [
-          "attack_whistle",
-          "the_finisher"
+          "the_finisher",
+          "grappling_mits"
         ],
         "variant": "B",
         "name": ""
@@ -80,14 +65,29 @@
         "skills": [
           "sniper_shot",
           "sniper_mark",
-          "suppressing_fire",
-          "battlefield_bandage"
+          "battlefield_bandage",
+          "flare"
         ],
         "trinkets": [
-          "piercing_quarrel",
-          "eagle_eye_talisman"
+          "stabilizing_tiller",
+          "piercing_quarrel"
         ],
-        "variant": "A",
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "vestal",
+        "skills": [
+          "mace_bash",
+          "judgement",
+          "dazzling_light",
+          "gods_comfort"
+        ],
+        "trinkets": [
+          "brass_knuckles",
+          "silver_syringe"
+        ],
+        "variant": "D",
         "name": ""
       }
     ]

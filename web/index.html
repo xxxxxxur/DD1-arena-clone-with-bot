@@ -86,6 +86,14 @@
               </select>
             </div>
             <div class="form-row">
+              <label>对手 Bot 算法</label>
+              <select id="vsbot-bot-class"></select>
+            </div>
+            <div class="form-row">
+              <label>单步预算(s)</label>
+              <input id="vsbot-budget" type="number" min="0.005" max="10" step="0.05" placeholder="默认 (0.25s，留空使用默认)" />
+            </div>
+            <div class="form-row">
               <label>对手阵容</label>
               <select id="vsbot-preset"></select>
             </div>
@@ -212,7 +220,7 @@
           </div>
           <div class="dialog-body">
             <div class="form-row">
-              <label>P1 Bot</label>
+              <label>P1 策略/阵容</label>
               <select id="bvb-bot0">
                 <option value="direct_kill">直伤斩杀 AI (≤0.5s 搜索)</option>
                 <option value="stun_kill">强晕斩杀 AI (≤0.5s 搜索)</option>
@@ -224,7 +232,12 @@
               <select id="bvb-preset0"></select>
             </div>
             <div class="form-row">
-              <label>P2 Bot</label>
+              <label>P1 Bot 算法</label>
+              <select id="bvb-class0"></select>
+              <input id="bvb-budget0" type="number" min="0.005" max="10" step="0.05" placeholder="预算(s) 默认0.25" style="max-width: 145px;" />
+            </div>
+            <div class="form-row">
+              <label>P2 策略/阵容</label>
               <select id="bvb-bot1">
                 <option value="stun_kill">强晕斩杀 AI (≤0.5s 搜索)</option>
                 <option value="direct_kill">直伤斩杀 AI (≤0.5s 搜索)</option>
@@ -234,6 +247,11 @@
                 <option value="lookahead">综合搜索 AI (≤0.5s)</option>
               </select>
               <select id="bvb-preset1"></select>
+            </div>
+            <div class="form-row">
+              <label>P2 Bot 算法</label>
+              <select id="bvb-class1"></select>
+              <input id="bvb-budget1" type="number" min="0.005" max="10" step="0.05" placeholder="预算(s) 默认0.25" style="max-width: 145px;" />
             </div>
             <button id="btn-start-bvb" class="btn-crimson large full">🤖 进入角斗场观战</button>
           </div>
@@ -319,11 +337,19 @@
         <button class="btn-iron speed-btn active" data-speed="1">1x</button>
         <button class="btn-iron speed-btn" data-speed="2">2x</button>
         <button class="btn-iron speed-btn" data-speed="3.5">3.5x</button>
+        <button id="btn-search-console" class="btn-iron" title="显示/隐藏 AI 搜索控制台">🖥 控制台</button>
       </div>
 
       <!-- Upper 720px Arena Stage Canvas -->
       <div id="stage-wrap">
         <canvas id="arena-canvas"></canvas>
+        <div id="bot-search-console" class="bot-search-console hidden">
+          <div class="bsc-head">
+            <span id="bsc-title">🖥 搜索控制台</span>
+            <button id="btn-bsc-close" class="bsc-close" title="关闭">✕</button>
+          </div>
+          <div id="bsc-body" class="bsc-body">等待 AI 行动...</div>
+        </div>
         <div id="stage-buff-tooltip" class="stage-buff-tooltip hidden"></div>
       </div>
 

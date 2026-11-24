@@ -247,7 +247,7 @@ public final class ArenaEngine {
             LinkedHashSet<String> tSet = new LinkedHashSet<>(4);
             for (String tid : loadout.trinkets) {
                 TrinketDef td = gd.trinkets.get(tid);
-                if (td != null && (td.heroClass.isEmpty() || td.heroClass.equals(hdef.id))) {
+                if (td != null && td.allowsHero(hdef.id)) {
                     tSet.add(tid);
                     if (tSet.size() >= 2) break;
                 }
@@ -498,7 +498,7 @@ public final class ArenaEngine {
         v[StatKey.DODGE] = h.dodge + v[StatKey.DODGE];
         v[StatKey.PROT] = h.prot + v[StatKey.PROT];
         v[StatKey.CRIT] = baseCrit + v[StatKey.CRIT];
-        v[StatKey.DEATHBLOW_RES] = h.deathblowRes + v[StatKey.DEATHBLOW_RES];
+        v[StatKey.DEATHBLOW_RES] = h.deathblowRes + v[StatKey.DEATHBLOW_RES] - unit.deathblowResPenalty;
         v[StatKey.STUN_RES] = h.stunRes + v[StatKey.STUN_RES];
         v[StatKey.BLEED_RES] = h.bleedRes + v[StatKey.BLEED_RES];
         v[StatKey.BLIGHT_RES] = h.blightRes + v[StatKey.BLIGHT_RES];
@@ -1401,8 +1401,13 @@ public final class ArenaEngine {
                 if (doKill) {
                     killed = true;
                     killHero(target, events, !(isCrit || sdef.noCorpseOnKill), "deathblow");
-                } else if (events != null) {
-                    events.add(new CombatEvent("DEATHS_DOOR_RESIST", mapOf("unit_uid", target.uid)));
+                } else {
+                    target.deathblowResPenalty += 10;
+                    if (events != null) {
+                        events.add(new CombatEvent("DEATHS_DOOR_RESIST", mapOf(
+                                "unit_uid", target.uid, "deathblow_res_penalty", target.deathblowResPenalty
+                        )));
+                    }
                 }
             } else {
                 target.hp = Math.max(0, target.hp - dmg);
@@ -1501,6 +1506,13 @@ public final class ArenaEngine {
         }
         if (sdef.breaksGuard) {
             breakGuardOnOrBy(target, events);
+            target.guardBlockedRounds = Math.max(target.guardBlockedRounds, 2);
+            if (target == actor) target.freshStatusMask |= UnitState.FRESH_GUARD_BLOCKED;
+            if (events != null) {
+                events.add(new CombatEvent("STATUS_APPLIED", mapOf(
+                        "unit_uid", target.uid, "status", "guard_blocked", "rounds", 2
+                )));
+            }
         }
         if (sdef.markRounds > 0) {
             target.markedRounds = Math.max(target.markedRounds, sdef.markRounds);
@@ -1679,8 +1691,13 @@ public final class ArenaEngine {
             double killChance = clamp(100.0 - tstats.values[StatKey.DEATHBLOW_RES] + rstats.values[StatKey.DEATHBLOW_CHANCE], 5.0, 100.0);
             if (rng.nextDouble() * 100.0 < killChance) {
                 killHero(attacker, events, !isCrit, "deathblow");
-            } else if (events != null) {
-                events.add(new CombatEvent("DEATHS_DOOR_RESIST", mapOf("unit_uid", attacker.uid)));
+            } else {
+                attacker.deathblowResPenalty += 10;
+                if (events != null) {
+                    events.add(new CombatEvent("DEATHS_DOOR_RESIST", mapOf(
+                            "unit_uid", attacker.uid, "deathblow_res_penalty", attacker.deathblowResPenalty
+                    )));
+                }
             }
         } else {
             attacker.hp = Math.max(0, attacker.hp - dmg);
@@ -1887,14 +1904,16 @@ public final class ArenaEngine {
     }
 
     private void setGuard(UnitState guardian, UnitState target, int rounds, List<CombatEvent> events) {
-        breakGuardBy(guardian, events);
-        if (target.guardedByUid != null) {
-            UnitState oldG = findUnit(target.guardedByUid);
-            if (oldG != null) {
-                oldG.guardingUid = null;
-                oldG.guardRounds = 0;
+        if (target.guardBlockedRounds > 0) {
+            if (events != null) {
+                events.add(new CombatEvent("GUARD_BLOCKED", mapOf(
+                        "guardian_uid", guardian.uid, "protected_uid", target.uid
+                )));
             }
+            return;
         }
+        breakGuardOnOrBy(guardian, events);
+        breakGuardOnOrBy(target, events);
         guardian.guardingUid = target.uid;
         int effRounds = pyRound(rounds * (1.0 + buffSum(guardian, StatKey.GUARD_DURATION) / 100.0));
         guardian.guardRounds = effRounds;
@@ -2006,6 +2025,9 @@ public final class ArenaEngine {
         if (actor.guardRounds > 0 && (freshMask & UnitState.FRESH_GUARD) == 0) {
             actor.guardRounds--;
             if (actor.guardRounds <= 0) breakGuardBy(actor, events);
+        }
+        if (actor.guardBlockedRounds > 0 && (freshMask & UnitState.FRESH_GUARD_BLOCKED) == 0) {
+            actor.guardBlockedRounds--;
         }
 
         // Victory check
@@ -2158,6 +2180,8 @@ public final class ArenaEngine {
         m.put("guarding_uid", unit.guardingUid);
         m.put("guarded_by_uid", unit.guardedByUid);
         m.put("guard_rounds", unit.guardRounds);
+        m.put("guard_blocked_rounds", unit.guardBlockedRounds);
+        m.put("deathblow_res_penalty", unit.deathblowResPenalty);
         m.put("aegis_blocks", unit.aegisBlocks);
         m.put("is_beast", unit.isBeast);
         m.put("transformed_this_round", unit.transformedThisRound);
@@ -2264,7 +2288,9 @@ public final class ArenaEngine {
                         | (u.isAfflicted ? (1L << 48) : 0L)
                         | (((long) u.dots.size() & 0xFL) << 49)
                         | (((long) u.buffs.size() & 0x1FL) << 53)
-                        | (u.transformedThisRound ? (1L << 58) : 0L);
+                        | (u.transformedThisRound ? (1L << 58) : 0L)
+                        | (((long) u.guardBlockedRounds & 0x3L) << 59)
+                        | (((long) (u.deathblowResPenalty / 10) & 0x7L) << 61);
                 h ^= mix64(uh ^ ((long) (t * 4 + i + 1) * 0x517CC1B727220A95L));
                 h = Long.rotateLeft(h, 7);
             }

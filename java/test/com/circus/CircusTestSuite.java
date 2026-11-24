@@ -198,7 +198,7 @@ public final class CircusTestSuite {
             for (HeroLoadout h : p.team.heroes) {
                 for (String tid : h.trinkets) {
                     TrinketDef td = gd.trinkets.get(tid);
-                    check(td != null && (td.heroClass.isEmpty() || td.heroClass.equals(h.heroId)), "preset trinket valid: " + tid);
+                    check(td != null && td.allowsHero(h.heroId), "preset trinket valid: " + tid);
                 }
             }
         }
@@ -509,7 +509,7 @@ public final class CircusTestSuite {
         Path tmpTourDir = Files.createTempDirectory("circus_tour_test_");
         try {
             var report = Simulator.runTournament(
-                    List.of(new Simulator.BotSpec("direct_kill", null), new Simulator.BotSpec("stress_circus", null)),
+                    List.of(new Simulator.BotSpec("direct_kill", null), new Simulator.BotSpec("beginner_stress", null)),
                     4, 4, 123L, 40, 0, null, tmpTourDir, 0.015
             );
             checkEq(4, report.totalMatches(), "4 matches");

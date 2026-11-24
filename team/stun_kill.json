@@ -2,7 +2,7 @@
   "id": "stun_kill",
   "name": "强晕斩杀 AI",
   "name_en": "Heavy Stun Execute (Abo/Cru/BH/Arb)",
-  "name_zh": "强晕斩杀（咒缚/十字军/赏金/弩手）",
+  "name_zh": "强晕斩杀（狼十赏弩）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "stun_kill",

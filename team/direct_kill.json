@@ -2,7 +2,7 @@
   "id": "direct_kill",
   "name": "直伤斩杀 AI",
   "name_en": "Direct Damage Execute (SB/HWM/Jes/Ves)",
-  "name_zh": "直伤斩杀（破盾/强盗/小丑/修女）",
+  "name_zh": "直伤斩杀（破强丑修）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "direct_kill",

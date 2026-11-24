@@ -1,8 +1,8 @@
 {
-  "id": "dodge_fortress",
-  "name": "铁壁兽化队 AI",
-  "name_en": "Iron Wall & Abomination",
-  "name_zh": "铁壁兽化持久队",
+  "id": "the_wall",
+  "name": "城墙铁壁 AI",
+  "name_en": "The Wall (Lep/Cru/MAA/Ves)",
+  "name_zh": "城墙铁壁（麻十兵修）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "iron_wall",
@@ -19,61 +19,58 @@
     "stress_weight": 1.15,
     "disruption_weight": 1.0,
     "defense_weight": 1.35,
-    "strategic_eval": false,
-    "mitigation_weight": 0.0,
-    "pressure_weight": 0.0,
-    "setup_weight": 0.0,
+    "strategic_eval": true,
+    "mitigation_weight": 1.0,
+    "pressure_weight": 2.0,
+    "setup_weight": 1.0,
     "bulwark_priority": 120.0,
-    "guard_bias": 0.0,
+    "guard_bias": -100.0,
     "control_bonus": 0.0
   },
   "team": {
-    "name": "Iron Fortress",
+    "name": "The Wall",
     "heroes": [
       {
         "hero_id": "leper",
         "skills": [
           "chop",
-          "solemnity",
+          "revenge",
           "withstand",
           "intimidate"
         ],
         "trinkets": [
-          "gladiator_mask",
+          "jagged_chopper",
           "gladiator_helmet"
         ],
         "variant": "A",
         "name": ""
       },
       {
-        "hero_id": "abomination",
+        "hero_id": "crusader",
         "skills": [
-          "transform",
-          "manacles",
-          "vomit",
-          "absolution",
-          "rake",
-          "rage",
-          "slam"
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
         ],
         "trinkets": [
-          "clasp_of_the_beast",
-          "shattered_padlock"
+          "brass_knuckles",
+          "pitfighter_helm"
         ],
         "variant": "B",
         "name": ""
       },
       {
-        "hero_id": "antiquarian",
+        "hero_id": "man_at_arms",
         "skills": [
-          "invigorating_vapours",
-          "protect_me",
-          "flashpowder",
-          "festering_vapours"
+          "bellow",
+          "defender",
+          "command",
+          "bolster"
         ],
         "trinkets": [
-          "numbing_incense",
-          "black_diamond_mirror"
+          "protector_kite",
+          "numbing_incense"
         ],
         "variant": "C",
         "name": ""
@@ -81,16 +78,16 @@
       {
         "hero_id": "vestal",
         "skills": [
-          "divine_grace",
-          "gods_comfort",
+          "judgement",
           "dazzling_light",
-          "judgement"
+          "divine_grace",
+          "gods_comfort"
         ],
         "trinkets": [
-          "idol_of_purity",
-          "ankh_of_life"
+          "brass_knuckles",
+          "silver_syringe"
         ],
-        "variant": "A",
+        "variant": "D",
         "name": ""
       }
     ]

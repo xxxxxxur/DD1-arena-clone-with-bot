@@ -1,8 +1,8 @@
 {
-  "id": "bleed_blight_dot",
-  "name": "猩红瘟疫队 AI",
-  "name_en": "Crimson Plague (DoT Control)",
-  "name_zh": "猩红瘟疫队（流血腐蚀）",
+  "id": "bleed_blight_torture",
+  "name": "流血腐蚀折磨 AI",
+  "name_en": "Bleed & Blight Torture (HM/PD/Fla/Ant)",
+  "name_zh": "流血腐蚀折磨（狗医苦古）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "balanced",
@@ -28,66 +28,66 @@
     "control_bonus": 0.0
   },
   "team": {
-    "name": "Crimson Plague",
+    "name": "Bleed & Blight Torture",
     "heroes": [
-      {
-        "hero_id": "flagellant",
-        "skills": [
-          "punish",
-          "rain_of_sorrows",
-          "exsanguinate",
-          "redeem"
-        ],
-        "trinkets": [
-          "crown_of_thorns",
-          "crimson_hook"
-        ],
-        "variant": "A",
-        "name": ""
-      },
-      {
-        "hero_id": "hellion",
-        "skills": [
-          "if_it_bleeds",
-          "wicked_hack",
-          "iron_swan",
-          "barbaric_yawp"
-        ],
-        "trinkets": [
-          "executioner_halberd",
-          "jagged_chopper"
-        ],
-        "variant": "B",
-        "name": ""
-      },
       {
         "hero_id": "houndmaster",
         "skills": [
-          "hounds_harry",
           "hounds_rush",
+          "hounds_harry",
           "guard_dog",
           "lick_wounds"
         ],
         "trinkets": [
-          "tattered_chewtoy",
-          "attack_whistle"
+          "attack_whistle",
+          "monkey_paw"
         ],
-        "variant": "C",
+        "variant": "A",
         "name": ""
       },
       {
         "hero_id": "plague_doctor",
         "skills": [
+          "noxious_blast",
           "plague_grenade",
-          "blinding_gas",
           "battlefield_medicine",
           "disorienting_blast"
         ],
         "trinkets": [
-          "acrid_vial",
+          "volatile_concoction",
           "rotting_trophy"
         ],
-        "variant": "A",
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "flagellant",
+        "skills": [
+          "punish",
+          "rain_of_sorrows",
+          "reclaim",
+          "redeem"
+        ],
+        "trinkets": [
+          "crimson_hook",
+          "crushed_hemlock"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "antiquarian",
+        "skills": [
+          "kris_stab",
+          "festering_vapours",
+          "cower",
+          "fortifying_vapours"
+        ],
+        "trinkets": [
+          "materia_pestis",
+          "monkey_paw"
+        ],
+        "variant": "D",
         "name": ""
       }
     ]

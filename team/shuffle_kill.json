@@ -2,7 +2,7 @@
   "id": "shuffle_kill",
   "name": "乱位斩杀 AI",
   "name_en": "Shuffle Execute (Cru/SB/HWM/Ves)",
-  "name_zh": "乱位斩杀（十字军/破盾/强盗/修女）",
+  "name_zh": "乱位斩杀（十破强修）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "shuffle_kill",

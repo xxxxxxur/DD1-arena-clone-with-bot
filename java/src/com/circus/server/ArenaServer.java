@@ -131,8 +131,13 @@ public final class ArenaServer {
                 traitsMap.put(td.id, tm);
             }
 
+            Map<String, TeamConfigStore.TeamEntry> reloadedTeams = TeamConfigStore.reload();
             List<Map<String, Object>> presetsList = new ArrayList<>();
-            for (PresetDef p : gd.getPresets()) presetsList.add(p.toMap());
+            for (PresetDef p : gd.getPresets()) {
+                if (reloadedTeams.containsKey(p.id) || p.id.startsWith("practice_")) {
+                    presetsList.add(p.toMap());
+                }
+            }
 
             Map<String, Object> boot = new LinkedHashMap<>();
             boot.put("hero_order", gd.heroOrder);
@@ -140,7 +145,7 @@ public final class ArenaServer {
             boot.put("trinkets", trinketList);
             boot.put("traits", traitsMap);
             boot.put("presets", presetsList);
-            boot.put("teams", TeamConfigStore.reload().values().stream().map(TeamConfigStore.TeamEntry::toMap).toList());
+            boot.put("teams", reloadedTeams.values().stream().map(TeamConfigStore.TeamEntry::toMap).toList());
             boot.put("bots", BotRegistry.availableTypes());
             boot.put("bot_classes", BotRegistry.availableBotClasses());
             boot.put("cpu_cores", Math.max(1, Runtime.getRuntime().availableProcessors()));
@@ -248,13 +253,20 @@ public final class ArenaServer {
 
         if ("/api/rooms".equals(path) && "POST".equals(req.method)) {
             Map<String, Object> body = req.bodyJson();
+            Double sharedBudget = parseOptionalBudget(body.get("budget"));
+            Double bot0Budget = parseOptionalBudget(body.get("bot0_budget"));
+            Double bot1Budget = parseOptionalBudget(body.get("bot1_budget"));
             Room room = RoomManager.INSTANCE.createRoom(
                     Json.str(body, "mode", "vs_bot"),
                     Json.str(body, "arena_tier", "darkest"),
                     Json.str(body, "bot0_type", "tactical"),
                     Json.str(body, "bot1_type", "tactical"),
                     emptyToNull(Json.str(body, "bot0_preset", null)),
-                    emptyToNull(Json.str(body, "bot1_preset", null))
+                    emptyToNull(Json.str(body, "bot1_preset", null)),
+                    emptyToNull(Json.str(body, "bot0_class", Json.str(body, "bot0_bot", null))),
+                    emptyToNull(Json.str(body, "bot1_class", Json.str(body, "bot1_bot", null))),
+                    bot0Budget != null ? bot0Budget : sharedBudget,
+                    bot1Budget != null ? bot1Budget : sharedBudget
             );
             res.sendJson(200, Map.of("room_id", room.roomId, "room", room.seatStatus()));
             return;
@@ -801,5 +813,23 @@ public final class ArenaServer {
 
     private static String emptyToNull(String s) {
         return (s == null || s.isEmpty()) ? null : s;
+    }
+
+    private static Double parseOptionalBudget(Object raw) {
+        if (raw == null) return null;
+        double val;
+        if (raw instanceof Number n) {
+            val = n.doubleValue();
+        } else {
+            String s = String.valueOf(raw).trim();
+            if (s.isEmpty()) return null;
+            try {
+                val = Double.parseDouble(s);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        if (!Double.isFinite(val) || val <= 0.0) return null;
+        return Math.max(0.005, Math.min(10.0, val));
     }
 }

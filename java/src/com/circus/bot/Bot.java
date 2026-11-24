@@ -44,4 +44,7 @@ public interface Bot extends AutoCloseable {
     /** Optional cleanup hook (e.g. shutting down subprocesses or thread pools). */
     @Override
     default void close() {}
+
+    /** Optional search telemetry for single-match live console (null if not a search bot). */
+    default java.util.Map<String, Object> getLastSearchStats() { return null; }
 }

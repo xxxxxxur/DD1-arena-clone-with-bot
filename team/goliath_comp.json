@@ -1,8 +1,8 @@
 {
-  "id": "dance_riposte",
-  "name": "剑舞反击队 AI",
-  "name_en": "Blade Dance & Riposte",
-  "name_zh": "剑舞反击突进队",
+  "id": "goliath_comp",
+  "name": "歌利亚阵容 AI",
+  "name_en": "Goliath Comp (Lep/Cru/Jes/Arb)",
+  "name_zh": "歌利亚阵容（麻十丑弩）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "balanced",
@@ -11,7 +11,7 @@
     "root_width": 10,
     "branch_width": 4,
     "detailed_tt_hash": true,
-    "formation_weight": 0.35,
+    "formation_weight": 1.0,
     "kill_weight": 1.0,
     "survival_weight": 1.0,
     "damage_weight": 1.0,
@@ -28,66 +28,66 @@
     "control_bonus": 0.0
   },
   "team": {
-    "name": "Blade Dance",
+    "name": "Goliath Comp",
     "heroes": [
       {
-        "hero_id": "shieldbreaker",
+        "hero_id": "leper",
         "skills": [
-          "pierce",
-          "break_guard",
-          "adders_kiss",
-          "serpents_sway"
+          "chop",
+          "revenge",
+          "withstand",
+          "intimidate"
         ],
         "trinkets": [
-          "scaled_shoulder",
-          "viper_spear_tip"
+          "jagged_chopper",
+          "gladiator_helmet"
         ],
         "variant": "A",
         "name": ""
       },
       {
-        "hero_id": "highwayman",
-        "skills": [
-          "duelist_advance",
-          "point_blank_shot",
-          "wicked_slice",
-          "pistol_shot"
-        ],
-        "trinkets": [
-          "parrying_dagger",
-          "monkey_paw"
-        ],
-        "variant": "D",
-        "name": ""
-      },
-      {
         "hero_id": "crusader",
         "skills": [
-          "holy_lance",
-          "smite",
-          "inspiring_cry",
-          "battle_heal"
+          "zealous_accusation",
+          "stunning_blow",
+          "battle_heal",
+          "holy_lance"
         ],
         "trinkets": [
           "sacred_blade",
-          "pitfighter_helm"
+          "writ_of_execution"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "the_finisher"
         ],
         "variant": "C",
         "name": ""
       },
       {
-        "hero_id": "grave_robber",
+        "hero_id": "arbalest",
         "skills": [
-          "lunge",
-          "shadow_fade",
-          "thrown_dagger",
-          "pick"
+          "sniper_shot",
+          "sniper_mark",
+          "battlefield_bandage",
+          "flare"
         ],
         "trinkets": [
-          "well_balanced_stiletto",
-          "cloak_and_dagger"
+          "stabilizing_tiller",
+          "piercing_quarrel"
         ],
-        "variant": "B",
+        "variant": "D",
         "name": ""
       }
     ]

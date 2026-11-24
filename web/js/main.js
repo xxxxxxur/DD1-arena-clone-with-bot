@@ -123,6 +123,7 @@ async function init() {
 
   populatePresetSelects();
   populateTeamBotSelects();
+  populateSingleMatchBotClassSelects();
   populateTournamentTeamPicker();
   bindEvents();
   refreshReplays();
@@ -306,6 +307,55 @@ function populateTournamentTeamPicker(preserveChecked = false) {
   updateTournamentSelectionSummary();
 }
 
+function defaultBotClassLabelForTeam(teamOrAlias) {
+  const teams = appState.bootstrap?.teams || [];
+  const found = teams.find((t) => t.id === teamOrAlias);
+  if (found?.bot_class) {
+    return found.bot_class.split(".").pop() || "Bot";
+  }
+  const aliasMap = {
+    lookahead: "CircusSearchBot",
+    search: "CircusSearchBot",
+    fortress: "FortressBot",
+    stress: "StressSpecialistBot",
+    tactical: "TacticalBot",
+    random: "RandomBot",
+    neural_search: "NeuralSearchBot",
+    unit_neural_search: "UnitNeuralSearchBot",
+  };
+  return aliasMap[teamOrAlias] || "CircusSearchBot";
+}
+
+function populateSingleMatchBotClassSelects(preserveValue = true) {
+  const botOpts = getTournamentBotOptions();
+  const pairs = [
+    ["vsbot-bot-class", "vsbot-ai"],
+    ["bvb-class0", "bvb-bot0"],
+    ["bvb-class1", "bvb-bot1"],
+  ];
+  for (const [clsSelId, teamSelId] of pairs) {
+    const sel = $(clsSelId);
+    if (!sel) continue;
+    const prev = preserveValue ? sel.value : "";
+    const teamVal = $(teamSelId)?.value || "";
+    const shortDefault = defaultBotClassLabelForTeam(teamVal);
+    sel.innerHTML = "";
+    const defOpt = document.createElement("option");
+    defOpt.value = "";
+    defOpt.textContent = appState.lang === "zh" ? `默认 (${shortDefault})` : `Default (${shortDefault})`;
+    sel.appendChild(defOpt);
+    for (const b of botOpts) {
+      const opt = document.createElement("option");
+      opt.value = b.id;
+      opt.textContent = b.label || b.id;
+      sel.appendChild(opt);
+    }
+    if (prev && [...sel.options].some((o) => o.value === prev)) {
+      sel.value = prev;
+    }
+  }
+}
+
 function populateTeamBotSelects() {
   const teams = appState.bootstrap.teams || [];
   if (!teams.length) return;
@@ -360,18 +410,26 @@ const META_BOT_PRESET_MAP = {
 };
 
 function bindEvents() {
-  for (const [botSelId, presetSelId] of [
-    ["vsbot-ai", "vsbot-preset"],
-    ["bvb-bot0", "bvb-preset0"],
-    ["bvb-bot1", "bvb-preset1"],
+  for (const [botSelId, presetSelId, clsSelId] of [
+    ["vsbot-ai", "vsbot-preset", "vsbot-bot-class"],
+    ["bvb-bot0", "bvb-preset0", "bvb-class0"],
+    ["bvb-bot1", "bvb-preset1", "bvb-class1"],
   ]) {
     const bSel = $(botSelId);
     const pSel = $(presetSelId);
+    const cSel = $(clsSelId);
     if (bSel && pSel) {
       bSel.addEventListener("change", () => {
-        const mapped = META_BOT_PRESET_MAP[bSel.value];
+        const mapped = [...pSel.options].some((o) => o.value === bSel.value)
+          ? bSel.value
+          : META_BOT_PRESET_MAP[bSel.value];
         if (mapped && [...pSel.options].some((o) => o.value === mapped)) {
           pSel.value = mapped;
+        }
+        if (cSel && cSel.options.length > 0 && cSel.options[0].value === "") {
+          const shortDefault = defaultBotClassLabelForTeam(bSel.value);
+          cSel.options[0].textContent =
+            appState.lang === "zh" ? `默认 (${shortDefault})` : `Default (${shortDefault})`;
         }
       });
     }
@@ -396,6 +454,7 @@ function bindEvents() {
     appState.townScene.setLanguage(appState.lang);
     updateCloseupButtonLabel();
     populatePresetSelects();
+    populateSingleMatchBotClassSelects(true);
     populateTournamentTeamPicker(true);
     if (appState.draftTeam) renderTeamBuilder();
     if (appState.obs) renderCombatHud();
@@ -429,6 +488,13 @@ function bindEvents() {
     });
   }
 
+  const parseOptionalBudgetInput = (id) => {
+    const raw = $(id)?.value?.trim();
+    if (!raw) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) && v > 0 ? Math.max(0.005, Math.min(10, v)) : null;
+  };
+
   // Modal actions: Play vs Bot
   $("btn-start-vsbot").addEventListener("click", async () => {
     appState.audio.playLockIn();
@@ -440,6 +506,8 @@ function bindEvents() {
         mode: "vs_bot",
         arena_tier: $("arena-tier-select").value,
         bot1_type: $("vsbot-ai").value,
+        bot1_class: $("vsbot-bot-class")?.value || null,
+        bot1_budget: parseOptionalBudgetInput("vsbot-budget"),
         bot1_preset: $("vsbot-preset").value || null,
       }),
     });
@@ -483,6 +551,10 @@ function bindEvents() {
         arena_tier: $("arena-tier-select").value,
         bot0_type: $("bvb-bot0").value,
         bot1_type: $("bvb-bot1").value,
+        bot0_class: $("bvb-class0")?.value || null,
+        bot1_class: $("bvb-class1")?.value || null,
+        bot0_budget: parseOptionalBudgetInput("bvb-budget0"),
+        bot1_budget: parseOptionalBudgetInput("bvb-budget1"),
         bot0_preset: $("bvb-preset0").value || null,
         bot1_preset: $("bvb-preset1").value || null,
       }),
@@ -711,6 +783,19 @@ function bindEvents() {
     $("combat-log-drawer").classList.toggle("collapsed");
     appState.audio.playUiClick();
   });
+  $("btn-search-console")?.addEventListener("click", () => {
+    const el = $("bot-search-console");
+    if (!el) return;
+    const willHide = !el.classList.contains("hidden");
+    el.classList.toggle("hidden", willHide);
+    appState.consoleDismissed = willHide;
+    appState.audio.playUiClick();
+  });
+  $("btn-bsc-close")?.addEventListener("click", () => {
+    $("bot-search-console")?.classList.add("hidden");
+    appState.consoleDismissed = true;
+    appState.audio.playUiClick();
+  });
   $("btn-close-log").addEventListener("click", () => {
     $("combat-log-drawer").classList.add("collapsed");
     appState.audio.playUiClick();
@@ -868,11 +953,38 @@ function connectRoom(roomId, seatQuery = "auto") {
     } else if (msg.type === "COMBAT_UPDATE") {
       appState.seat = msg.seat;
       appState.roomInfo = msg.room;
+      if (msg.search_stats) {
+        updateSearchConsole(msg.search_stats);
+      }
       playback = playback.then(() => {
         if (appState.ws === ws) return onCombatUpdate(msg.observation, msg.events || []);
       }).catch((error) => console.error("Combat playback failed", error));
     }
   };
+}
+
+function updateSearchConsole(stats) {
+  const el = $("bot-search-console");
+  const body = $("bsc-body");
+  if (!el || !body || !stats) return;
+  if (!appState.consoleDismissed) {
+    el.classList.remove("hidden");
+  }
+  const teamTag = stats.team === 0 ? "P1" : stats.team === 1 ? "P2" : "";
+  const actText = stats.skill_id
+    ? `${stats.skill_id}${Array.isArray(stats.target_uids) && stats.target_uids.length ? " → " + stats.target_uids.join(",") : ""}`
+    : (stats.action_kind || "—");
+  const npsText = typeof stats.nps === "number" ? stats.nps.toLocaleString() : "—";
+  body.innerHTML = `
+    <div class="bsc-row"><span class="bsc-label">行动方</span><span class="bsc-val gold">${teamTag ? `[${teamTag}] ` : ""}${stats.bot_name || "Bot"} (${stats.bot_class || ""})</span></div>
+    <div class="bsc-row"><span class="bsc-label">回合 / 步</span><span class="bsc-val">R${stats.round ?? "?"} · T${stats.turn ?? "?"}</span></div>
+    <div class="bsc-row"><span class="bsc-label">搜索深度</span><span class="bsc-val good">${stats.depth ?? 0}</span></div>
+    <div class="bsc-row"><span class="bsc-label">展开节点</span><span class="bsc-val">${(stats.nodes ?? 0).toLocaleString()} (${npsText}/s)</span></div>
+    <div class="bsc-row"><span class="bsc-label">置换表命中</span><span class="bsc-val">${(stats.tt_hits ?? 0).toLocaleString()}</span></div>
+    <div class="bsc-row"><span class="bsc-label">耗时 / 预算</span><span class="bsc-val">${stats.elapsed_ms ?? 0} ms / ${stats.budget_ms ?? 0} ms</span></div>
+    <div class="bsc-row"><span class="bsc-label">最优估值</span><span class="bsc-val good">${stats.best_score ?? 0}</span></div>
+    <div class="bsc-row"><span class="bsc-label">决策动作</span><span class="bsc-val gold">${actText}</span></div>
+  `;
 }
 
 function onRoomStateUpdate() {
@@ -965,7 +1077,7 @@ function renderTeamBuilder() {
       cur.hero_id = hid;
       cur.trinkets = cur.trinkets.filter((tid) => {
         const item = trinketDef(tid);
-        return item && (!item.hero_class || item.hero_class === hid);
+        return item && (!item.hero_class || item.hero_class === hid || (item.hero_class === "arbalest" && hid === "musketeer") || (item.hero_class === "musketeer" && hid === "arbalest"));
       });
       cur.skills = [...hdef.default_skills];
       cur.name = hdef.name_en;
@@ -1112,7 +1224,7 @@ function renderTrinketPicker() {
   const listEl = $("trinket-picker");
   listEl.innerHTML = "";
   const all = (appState.bootstrap.trinkets || [])
-    .filter((t) => !t.hero_class || t.hero_class === cur.hero_id)
+    .filter((t) => !t.hero_class || t.hero_class === cur.hero_id || (t.hero_class === "arbalest" && cur.hero_id === "musketeer") || (t.hero_class === "musketeer" && cur.hero_id === "arbalest"))
     .filter((t) => !q || t.name_en.toLowerCase().includes(q) || t.name_zh.toLowerCase().includes(q) || t.description_en.toLowerCase().includes(q) || t.description_zh.toLowerCase().includes(q))
     .sort((a, b) => (b.hero_class === cur.hero_id ? 1 : 0) - (a.hero_class === cur.hero_id ? 1 : 0));
 
@@ -1327,8 +1439,15 @@ function renderEnemyStatuses(u) {
   if (u.stealth_rounds > 0) chips.push(`${appState.lang === "zh" ? "👁 潜行" : "👁 Stealth"} (${u.stealth_rounds})`);
   if (u.riposte_rounds > 0) chips.push(`${appState.lang === "zh" ? "⚔ 反击" : "⚔ Riposte"} (${u.riposte_rounds})`);
   if (u.aegis_blocks > 0) chips.push(`${appState.lang === "zh" ? "◈ 盾牌格挡" : "◈ Aegis"} ×${u.aegis_blocks}`);
-  if (u.guarded_by_uid) chips.push(appState.lang === "zh" ? "🛡 被守护" : "🛡 Guarded");
-  if (u.guarding_uids && u.guarding_uids.length) chips.push(appState.lang === "zh" ? "🛡 守护中" : "🛡 Guarding");
+  if (u.guarded_by_uid) {
+    const allUnits = [...(appState.lastObs?.my_units || []), ...(appState.lastObs?.enemy_units || [])];
+    const g = allUnits.find((x) => x.uid === u.guarded_by_uid);
+    const gName = g ? heroName(g.hero_id) : (appState.lang === "zh" ? "队友" : "Ally");
+    chips.push(appState.lang === "zh" ? `🛡 被${gName}守护` : `🛡 Guarded by ${gName}`);
+  }
+  if (u.guard_blocked_rounds > 0) {
+    chips.push(appState.lang === "zh" ? `🚫 无法被守护 (${u.guard_blocked_rounds})` : `🚫 Guard Blocked (${u.guard_blocked_rounds})`);
+  }
   const bleedSum = (u.dots || []).filter((d) => d.kind === "bleed").reduce((a, b) => a + b.amount, 0);
   const blightSum = (u.dots || []).filter((d) => d.kind === "blight").reduce((a, b) => a + b.amount, 0);
   if (bleedSum > 0) chips.push(`${appState.lang === "zh" ? "🩸 流血" : "🩸 Bleed"} ${bleedSum}/r`);
@@ -1812,11 +1931,17 @@ function renderStageIconTooltip(hb, clientX, clientY) {
     color = "#ffd480";
     body = `<div>${zh ? "受到直接伤害攻击时自动反击（0 伤害纯减益/压力技不触发反击）" : "Counters direct-damage attacks (non-damaging skills do not trigger Riposte)."}</div>`;
   } else if (hb.kind === "guard") {
-    title = zh ? "🛡 守护 (Guard)" : "🛡 Guard";
+    const allUnits = [...(appState.lastObs?.my_units || []), ...(appState.lastObs?.enemy_units || [])];
+    const g = u.guarded_by_uid ? allUnits.find((x) => x.uid === u.guarded_by_uid) : null;
+    const gName = g ? heroName(g.hero_id) : (zh ? "队友" : "Ally");
+    const rds = g?.guard_rounds ?? u.guard_rounds ?? 0;
+    title = zh ? `🛡 被${gName}守护 (${rds} 回合)` : `🛡 Guarded by ${gName} (${rds} rds)`;
     color = "#80d4ff";
-    body = u.guarding_uid
-      ? `<div>${zh ? `正在替队友承受单体攻击（剩余 ${u.guard_rounds} 回合）` : `Intercepting single-target attacks (${u.guard_rounds} rds left).`}</div>`
-      : `<div>${zh ? "正受到队友守护，单体攻击将由守护者承受" : "Protected by an ally guardian."}</div>`;
+    body = `<div>${zh ? `正受到 ${gName} 守护，单体攻击将由 ${gName} 承受` : `Protected by ${gName}; single-target attacks are intercepted.`}</div>`;
+  } else if (hb.kind === "guard_blocked") {
+    title = zh ? `🚫 无法被守护 (${u.guard_blocked_rounds} 回合)` : `🚫 Guard Blocked (${u.guard_blocked_rounds} rds)`;
+    color = "#ff8a65";
+    body = `<div>${zh ? "守护已被打破，持续期间无法成为守护目标" : "Guard broken; cannot be guarded while active."}</div>`;
   } else if (hb.kind === "block") {
     title = zh ? `🛡 神盾格挡 (${u.aegis_blocks} 层)` : `🛡 Aegis Block (${u.aegis_blocks})`;
     color = "#70d6ff";

@@ -6,6 +6,7 @@ import java.nio.file.*;
 /** Shared leaf evaluation for the current search and the frozen arena opponents. */
 abstract class NeuralValueBot extends CircusSearchBot {
     private final ArenaValue model, tactics;
+    private final boolean alignBase;
     private final double[] features = new double[ArenaValue.INPUT], hidden = new double[ArenaValue.HIDDEN];
     private final EffectiveStats stats = new EffectiveStats();
     private final EffectiveStats[][] unitStats = {
@@ -15,6 +16,7 @@ abstract class NeuralValueBot extends CircusSearchBot {
 
     NeuralValueBot(BotContext ctx) {
         super(ctx);
+        alignBase = ctx.optionInt("align_base", 0) != 0;
         Path path = Path.of(ctx.optionString("model", ArenaValue.FILE.toString()));
         model = Files.exists(path) || ctx.options().containsKey("model") ? ArenaValue.readCached(path) : null;
         Path defaultTactics = ctx.effectiveTimeBudget(.8) >= .3 && Files.isRegularFile(TacticalFeatures.BALANCED)
@@ -26,7 +28,7 @@ abstract class NeuralValueBot extends CircusSearchBot {
     @Override public boolean requiresUnitObservations() { return false; }
 
     @Override public double evaluateState(ArenaEngine e, int team) {
-        double base = super.evaluateState(e, team);
+        double base = alignBase ? evaluateBalancedBase(e, team) : super.evaluateState(e, team);
         if (model == null || e.state.finished) return base;
         ArenaValue.encode(e, team, features, stats, tactics != null ? unitStats : null);
         double logit = model.residual(features, hidden);

@@ -47,6 +47,11 @@ public class TacticalBot extends AbstractBot {
     }
 
     @Override
+    public java.util.Map<String, Object> getLastSearchStats() {
+        return searchBot.getLastSearchStats();
+    }
+
+    @Override
     public boolean requiresUnitObservations() {
         // Existing custom subclasses may read unit snapshots in chooseAction.
         return getClass() != TacticalBot.class && getClass() != StressSpecialistBot.class;

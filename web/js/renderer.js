@@ -43,6 +43,7 @@ const OVERLAY_ASSETS = {
   tray_stealth: "overlays/tray_stealth.png",
   tray_riposte: "overlays/tray_riposte.png",
   tray_guard: "overlays/tray_guard.png",
+  tray_guard_break: "overlays/tray_guard_break.png",
   tray_deathsdoor: "overlays/tray_deathsdoor.png",
   tray_block: "overlays/tray_health_damage_block.png",
   tray_regen: "overlays/tray_dot_hp_heal.png",
@@ -133,6 +134,11 @@ export class ArenaRenderer {
     this.closeupActive = false;
     this.closeupAge = 0;
     this.closeupCrit = false;
+    this.closeupDir = -1;
+    this.closeupIsAttack = true;
+    this.outroActive = false;
+    this.outroAge = 0;
+    this.outroStart = null;
     this.hitStopTimer = 0;
     this._preloadedRosterSig = "";
 
@@ -408,27 +414,31 @@ export class ArenaRenderer {
   _beginSkillCloseup(actorVis, targets, isAttack) {
     if (!this.closeupEnabled) return;
     const wasActive = this.closeupActive;
+    this.outroActive = false;
+    this.outroStart = null;
     this.closeupActive = true;
     this.closeupAge = 0;
     this.closeupCrit = false;
+    this.closeupIsAttack = !!isAttack;
+    this.closeupDir = actorVis ? (actorVis.isEnemy ? 1 : -1) : -1;
     this.spotlightUids.clear();
     if (actorVis) this.spotlightUids.add(actorVis.uid);
     for (const tv of targets) this.spotlightUids.add(tv.uid);
 
-    // Authentic Darkest Dungeon 3-Phase Comic-Book Close-Up:
-    // Phase 1 (HARD SNAP-IN): Instantly cut into foreground duel frame + blackout curtain!
-    this.spotlightTargetAlpha = 0.87;
+    // Authentic Darkest Dungeon Camera Presentation (melee.times / ranged.times):
+    // Non-spotlight units remain visible in the background, just dimmed/desaturated (NOT hidden).
+    this.spotlightTargetAlpha = 0.48;
     if (!wasActive) {
-      this.spotlightAlpha = 0.72; // Hard comic cut-in (no sluggish 300ms fade!)
-      this.camZoom = 1.15;
+      this.spotlightAlpha = 0.34;
+      this.camZoom = 1.16;
       this.camX = STAGE_W * 0.5;
       this.camY = STAGE_H * 0.525;
-      this.camTilt = actorVis ? (actorVis.isEnemy ? 0.017 : -0.017) : 0;
+      this.camTilt = this.closeupDir * 0.018;
     }
-    this.camTargetZoom = 1.24; // Phase 2: continuous slow comic zoom-in drift!
+    this.camTargetZoom = 1.24;
     this.camTargetX = STAGE_W * 0.5;
     this.camTargetY = STAGE_H * 0.53;
-    this.camTargetTilt = actorVis ? (actorVis.isEnemy ? 0.022 : -0.022) : 0;
+    this.camTargetTilt = this.closeupDir * (isAttack ? 0.055 : 0.026);
 
     const snapUnit = (vis, finalX, finalY, finalScale, snapKickX = 0) => {
       vis.targetX = finalX;
@@ -485,6 +495,12 @@ export class ArenaRenderer {
   previewSkillCast(actorUid, skillDef, targetUids = []) {
     if (!skillDef) return;
     const actorVis = this.unitVisuals.get(actorUid);
+    // Do not jump into a premature skill close-up when the actor has start-of-turn
+    // DoTs (Bleed/Blight/Horror/Regen) or a Resolve trait that will tick BEFORE SKILL_USE.
+    if (actorVis?.unit && ((actorVis.unit.dots && actorVis.unit.dots.length > 0) || actorVis.unit.trait_id)) {
+      this._previewCast = null;
+      return;
+    }
     const targets = (targetUids || []).map((id) => this.unitVisuals.get(id)).filter(Boolean);
     const isAttack = skillDef.target_team === "enemy";
     this._beginSkillCloseup(actorVis, targets, isAttack);
@@ -500,7 +516,12 @@ export class ArenaRenderer {
       }
       this.audio?.playHeroSkill(actorVis.unit.hero_id, skillDef.sfx_hint, skillDef.id);
     }
-    this._previewCast = { actorUid, skillId: skillDef.id, ts: performance.now() };
+    this._previewCast = {
+      actorUid,
+      skillId: skillDef.id,
+      targetUids: (targetUids || []).slice(),
+      ts: performance.now(),
+    };
   }
 
   async playEvents(events) {
@@ -542,6 +563,17 @@ export class ArenaRenderer {
       const ev = events[i];
 
       if (BOUNDARY_TYPES.has(ev.type)) {
+        // Look ahead for GUARD_INTERCEPT so SKILL_USE close-up spotlights the actual hit target (the guardian)
+        if (ev.type === "SKILL_USE") {
+          const redirects = new Map();
+          for (let j = i + 1; j < events.length && !BOUNDARY_TYPES.has(events[j].type); j++) {
+            const nxt = events[j];
+            if (nxt.type === "GUARD_INTERCEPT" && nxt.data?.protected_uid && nxt.data?.guardian_uid) {
+              redirects.set(nxt.data.protected_uid, nxt.data.guardian_uid);
+            }
+          }
+          if (redirects.size > 0) ev._guardRedirects = redirects;
+        }
         await this._playSingleEvent(ev);
         i += 1;
         // Collect ALL resolution events belonging to this action/turn wave up to the next boundary
@@ -557,6 +589,14 @@ export class ArenaRenderer {
           else impactBatch.push(cur);
           i += 1;
         }
+        // If start-of-turn effects (DoT ticks, Horror, Regen, Barks, etc.) occur before SKILL_USE,
+        // ensure they play in normal camera view and clear any premature preview so SKILL_USE plays once cleanly.
+        if (ev.type === "TURN_START" && (impactBatch.length || killEvents.length || deferredEvents.length)) {
+          this._previewCast = null;
+          if (this.closeupActive && playbackId === this.playbackId) {
+            this._resetCamera();
+          }
+        }
         let waveStress = null;
         if (impactBatch.length) {
           waveStress = await this._playResolutionBatch(impactBatch, playbackId);
@@ -569,9 +609,9 @@ export class ArenaRenderer {
         if (hasStressHalos || deferredEvents.length) {
           // Finish the action animation & return from close-up BEFORE playing post-action stress halos & Affliction!
           if (this.closeupActive) {
-            await wait(240);
+            await wait(360);
             if (playbackId === this.playbackId) this._resetCamera();
-            await wait(140);
+            await wait(240);
           }
           if (hasStressHalos && playbackId === this.playbackId) {
             this._playPostActionStressHalos(waveStress.gainUids, waveStress.healUids);
@@ -615,7 +655,7 @@ export class ArenaRenderer {
     }
 
     if (this.closeupActive) {
-      await wait(260);
+      await wait(380);
     }
     if (playbackId === this.playbackId) this._resetCamera();
     return { hadResolveCheck, hadHeartAttack };
@@ -698,6 +738,7 @@ export class ArenaRenderer {
                 // Iconic DD CRIT zoom punch!
                 this.camZoom = Math.max(this.camZoom, 1.26);
                 this.camTargetZoom = 1.35;
+                this.spotlightTargetAlpha = 0.62;
                 this.camTilt *= 1.5;
                 this.camTargetTilt *= 1.65;
               }
@@ -978,18 +1019,38 @@ export class ArenaRenderer {
 
     if (t === "SKILL_USE") {
       const actorVis = this.unitVisuals.get(d.actor_uid);
-      const targets = (d.target_uids || []).map((id) => this.unitVisuals.get(id)).filter(Boolean);
+      const redirects = ev._guardRedirects;
+      const rawTargetUids = d.target_uids || [];
+      const actualTargetUids = redirects
+        ? rawTargetUids.map((id) => redirects.get(id) || id)
+        : rawTargetUids;
+      const seenTargets = new Set();
+      const targets = [];
+      for (const id of actualTargetUids) {
+        if (seenTargets.has(id)) continue;
+        seenTargets.add(id);
+        const tv = this.unitVisuals.get(id);
+        if (tv) targets.push(tv);
+      }
       this.lastSkillCtx = { hero_id: d.hero_id, sfx_hint: d.sfx_hint, skill_id: d.skill_id, actor_uid: d.actor_uid };
 
-      // Check if previewSkillCast() already started this exact cast 0-250ms ago so we don't double-play audio/FX!
+      // Check if previewSkillCast() already started this exact cast 0-800ms ago so we don't double-play audio/FX!
+      const preview = this._previewCast;
       const alreadyPreviewed =
-        this._previewCast &&
-        this._previewCast.actorUid === d.actor_uid &&
-        this._previewCast.skillId === d.skill_id &&
-        performance.now() - this._previewCast.ts < 800;
+        preview &&
+        preview.actorUid === d.actor_uid &&
+        preview.skillId === d.skill_id &&
+        performance.now() - preview.ts < 800;
+      const samePreviewTargets =
+        alreadyPreviewed &&
+        Array.isArray(preview.targetUids) &&
+        preview.targetUids.length === actualTargetUids.length &&
+        preview.targetUids.every((uid, idx) => uid === actualTargetUids[idx]);
       this._previewCast = null;
 
-      this._beginSkillCloseup(actorVis, targets, d.is_attack !== false);
+      if (!(alreadyPreviewed && this.closeupActive && samePreviewTargets)) {
+        this._beginSkillCloseup(actorVis, targets, d.is_attack !== false);
+      }
 
       // Authentic Darkest Dungeon Move Name Banner (overlays/movename_frame.png)
       const sName = this.lang === "zh" ? d.name_zh : d.name_en;
@@ -1186,13 +1247,33 @@ export class ArenaRenderer {
   }
 
   _resetCamera() {
+    const wasInCloseup = this.closeupActive || this.spotlightAlpha > 0.02 || Math.abs(this.camZoom - 1.0) > 0.01;
     this.closeupActive = false;
     this.camTargetZoom = 1.0;
     this.camTargetTilt = 0.0;
     this.camTargetX = STAGE_W * 0.5;
     this.camTargetY = STAGE_H * 0.5;
     this.spotlightTargetAlpha = 0;
-    this.spotlightUids.clear();
+    if (wasInCloseup) {
+      this.outroActive = true;
+      this.outroAge = 0;
+      this.outroStart = {
+        zoom: this.camZoom,
+        tilt: this.camTilt,
+        x: this.camX,
+        y: this.camY,
+        spot: this.spotlightAlpha,
+      };
+      for (const vis of this.unitVisuals.values()) {
+        vis.outroStartX = vis.x;
+        vis.outroStartY = vis.y;
+        vis.outroStartScale = vis.scaleMul;
+      }
+    } else {
+      this.outroActive = false;
+      this.outroStart = null;
+      this.spotlightUids.clear();
+    }
     for (const vis of this.unitVisuals.values()) {
       vis.targetX = vis.formationX;
       vis.targetY = GROUND_Y;
@@ -1322,29 +1403,86 @@ export class ArenaRenderer {
     }
 
     const spdDt = dt * this.playbackSpeed;
-    // Authentic Darkest Dungeon 3-Phase Close-Up Camera Curve:
-    // - During closeup: crisp initial snap then slow continuous comic drift-in
-    // - Returning to formation: fast easeOutQuart snap-back (dt * 16)
-    let camLerp, unitLerp, spotLerp;
+    // Authentic Darkest Dungeon Camera Curves (from melee.times / ranged.times / melee_crit.times):
+    // - Intro: 0.085s snap-in
+    // - Moving hold: continuous tilt sweep (1.272s) + subtle zoom/pan drift
+    // - Outro: 0.340s easeOutBack camera return + 0.255s easeOutSine unit return
     if (this.closeupActive) {
       this.closeupAge += dt;
-      // Continuous slow zoom drift during impact hold
-      const maxZoom = this.closeupCrit ? 1.37 : 1.26;
-      this.camTargetZoom = Math.min(maxZoom, this.camTargetZoom + dt * (this.closeupCrit ? 0.08 : 0.055));
-      camLerp = Math.min(1, dt * (this.closeupAge < 0.08 ? 28.0 : 3.2));
-      unitLerp = Math.min(1, dt * (this.closeupAge < 0.10 ? 24.0 : 5.5));
-      spotLerp = Math.min(1, dt * 26.0);
-    } else {
-      camLerp = Math.min(1, dt * 16.0);
-      unitLerp = Math.min(1, dt * 17.0);
-      spotLerp = Math.min(1, dt * 16.0);
-    }
+      const holdT = Math.min(1.0, this.closeupAge / 1.272);
+      const maxZoom = this.closeupCrit ? 1.38 : 1.28;
+      this.camTargetZoom = Math.min(maxZoom, this.camTargetZoom + dt * (this.closeupCrit ? 0.09 : 0.06));
+      const tiltEnd = this.closeupDir * (this.closeupIsAttack ? (this.closeupCrit ? 0.082 : 0.072) : 0.032);
+      const tiltStart = this.closeupDir * (this.closeupCrit ? 0.032 : 0.018);
+      this.camTargetTilt = tiltStart + (tiltEnd - tiltStart) * holdT;
+      this.camTargetX = STAGE_W * 0.5 + this.closeupDir * 14.0 * holdT;
+      this.camTargetY = STAGE_H * (0.528 + 0.008 * holdT);
+      const camLerp = Math.min(1, dt * (this.closeupAge < 0.085 ? 26.0 : 3.2));
+      const unitLerp = Math.min(1, dt * (this.closeupAge < 0.095 ? 24.0 : 4.5));
+      const spotLerp = Math.min(1, dt * 22.0);
+      this.camZoom += (this.camTargetZoom - this.camZoom) * camLerp;
+      this.camTilt += (this.camTargetTilt - this.camTilt) * camLerp;
+      this.camX += (this.camTargetX - this.camX) * camLerp;
+      this.camY += (this.camTargetY - this.camY) * camLerp;
+      this.spotlightAlpha += (this.spotlightTargetAlpha - this.spotlightAlpha) * spotLerp;
+      for (const vis of this.unitVisuals.values()) {
+        vis.x += (vis.targetX - vis.x) * unitLerp;
+        vis.y += (vis.targetY - vis.y) * unitLerp;
+        vis.scaleMul += (vis.targetScaleMul - vis.scaleMul) * unitLerp;
+      }
+    } else if (this.outroActive && this.outroStart) {
+      this.outroAge += dt;
+      const pCam = Math.min(1, this.outroAge / 0.340);
+      const pUnit = Math.min(1, this.outroAge / 0.255);
+      // easeOutBack for camera blend/zoom/tilt (.time 0.340 .easing easeOutBack)
+      const c1 = 1.05;
+      const c3 = c1 + 1.0;
+      const u = pCam - 1.0;
+      const easeOutBack = 1.0 + c3 * u * u * u + c1 * u * u;
+      // easeOutSine for unit area_pos (.time 0.255 .easing easeOutSine)
+      const easeOutSine = Math.sin(pUnit * Math.PI * 0.5);
 
-    this.camZoom += (this.camTargetZoom - this.camZoom) * camLerp;
-    this.camTilt += (this.camTargetTilt - this.camTilt) * camLerp;
-    this.camX += (this.camTargetX - this.camX) * camLerp;
-    this.camY += (this.camTargetY - this.camY) * camLerp;
-    this.spotlightAlpha += (this.spotlightTargetAlpha - this.spotlightAlpha) * spotLerp;
+      const s = this.outroStart;
+      this.camZoom = s.zoom + (1.0 - s.zoom) * easeOutBack;
+      this.camTilt = s.tilt + (0.0 - s.tilt) * easeOutBack;
+      this.camX = s.x + (STAGE_W * 0.5 - s.x) * easeOutBack;
+      this.camY = s.y + (STAGE_H * 0.5 - s.y) * easeOutBack;
+      this.spotlightAlpha = Math.max(0, s.spot * (1.0 - easeOutSine));
+
+      for (const vis of this.unitVisuals.values()) {
+        const sx = vis.outroStartX ?? vis.x;
+        const sy = vis.outroStartY ?? vis.y;
+        const ss = vis.outroStartScale ?? vis.scaleMul;
+        vis.x = sx + (vis.targetX - sx) * easeOutSine;
+        vis.y = sy + (vis.targetY - sy) * easeOutSine;
+        vis.scaleMul = ss + (vis.targetScaleMul - ss) * easeOutSine;
+      }
+
+      if (pCam >= 1) {
+        this.outroActive = false;
+        this.outroStart = null;
+        this.spotlightUids.clear();
+        this.camZoom = 1.0;
+        this.camTilt = 0.0;
+        this.camX = STAGE_W * 0.5;
+        this.camY = STAGE_H * 0.5;
+        this.spotlightAlpha = 0;
+      }
+    } else {
+      const camLerp = Math.min(1, dt * 10.0);
+      const unitLerp = Math.min(1, dt * 12.0);
+      const spotLerp = Math.min(1, dt * 10.0);
+      this.camZoom += (this.camTargetZoom - this.camZoom) * camLerp;
+      this.camTilt += (this.camTargetTilt - this.camTilt) * camLerp;
+      this.camX += (this.camTargetX - this.camX) * camLerp;
+      this.camY += (this.camTargetY - this.camY) * camLerp;
+      this.spotlightAlpha += (this.spotlightTargetAlpha - this.spotlightAlpha) * spotLerp;
+      for (const vis of this.unitVisuals.values()) {
+        vis.x += (vis.targetX - vis.x) * unitLerp;
+        vis.y += (vis.targetY - vis.y) * unitLerp;
+        vis.scaleMul += (vis.targetScaleMul - vis.scaleMul) * unitLerp;
+      }
+    }
 
     if (this.shakeTime > 0) this.shakeTime = Math.max(0, this.shakeTime - dt);
     if (this.flashAlpha > 0) this.flashAlpha = Math.max(0, this.flashAlpha - dt * 2.8);
@@ -1357,9 +1495,6 @@ export class ArenaRenderer {
     }
 
     for (const vis of this.unitVisuals.values()) {
-      vis.x += (vis.targetX - vis.x) * unitLerp;
-      vis.y += (vis.targetY - vis.y) * unitLerp;
-      vis.scaleMul += (vis.targetScaleMul - vis.scaleMul) * unitLerp;
       vis.lungeOffsetX *= Math.pow(0.015, dt);
       // Smooth HP drain / heal buffer trail with authentic Darkest Dungeon hold delay
       if (vis.hpBufferHold > 0) {
@@ -1456,9 +1591,9 @@ export class ArenaRenderer {
     // 1. Arena background wall
     this._drawBackground(ctx);
 
-    // 2. Guard links & AoE target '+' connectors (hidden during blackout close-up)
+    // 2. Guard links & AoE target '+' connectors
+    this._drawGuardLinks(ctx);
     if (this.spotlightAlpha < 0.3) {
-      this._drawGuardLinks(ctx);
       this._drawAoeConnectors(ctx);
     }
 
@@ -1851,7 +1986,12 @@ export class ArenaRenderer {
     if (u.marked_rounds > 0) icons.push(["tray_tag", String(u.marked_rounds), "mark"]);
     if (u.stealth_rounds > 0) icons.push(["tray_stealth", String(u.stealth_rounds), "stealth"]);
     if (u.riposte_rounds > 0) icons.push(["tray_riposte", String(u.riposte_rounds), "riposte"]);
-    if (u.guarded_by_uid || u.guarding_uid) icons.push(["tray_guard", u.guard_rounds > 0 ? String(u.guard_rounds) : "", "guard"]);
+    if (u.guarded_by_uid) {
+      const guardian = this.unitVisuals.get(u.guarded_by_uid)?.unit;
+      const gRds = guardian?.guard_rounds ?? u.guard_rounds ?? 0;
+      icons.push(["tray_guard", gRds > 0 ? String(gRds) : "", "guard"]);
+    }
+    if (u.guard_blocked_rounds > 0) icons.push(["tray_guard_break", String(u.guard_blocked_rounds), "guard_blocked"]);
     if (u.aegis_blocks > 0) icons.push(["tray_block", String(u.aegis_blocks), "block"]);
 
     const bleedDots = (u.dots || []).filter((d) => d.kind === "bleed");

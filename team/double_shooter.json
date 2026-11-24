@@ -1,0 +1,95 @@
+{
+  "id": "double_shooter",
+  "name": "双射手 AI",
+  "name_en": "Double Shooter (BH/Jes/Arb/Mus)",
+  "name_zh": "双射手（赏丑弩枪）",
+  "bot_class": "com.circus.bot.CircusSearchBot",
+  "bot_options": {
+    "profile": "direct_kill",
+    "time_budget": 0.25,
+    "max_depth": 14,
+    "root_width": 10,
+    "branch_width": 4,
+    "detailed_tt_hash": true,
+    "formation_weight": 1.0,
+    "kill_weight": 1.15,
+    "survival_weight": 1.0,
+    "damage_weight": 1.22,
+    "stun_weight": 0.95,
+    "stress_weight": 1.0,
+    "disruption_weight": 1.0,
+    "defense_weight": 0.95,
+    "strategic_eval": false,
+    "mitigation_weight": 0.0,
+    "pressure_weight": 0.0,
+    "setup_weight": 0.0,
+    "bulwark_priority": 120.0,
+    "guard_bias": 0.0,
+    "control_bonus": 0.0
+  },
+  "team": {
+    "name": "Double Shooter",
+    "heroes": [
+      {
+        "hero_id": "bounty_hunter",
+        "skills": [
+          "target_tag",
+          "come_hither",
+          "finish_him",
+          "hook_and_slice"
+        ],
+        "trinkets": [
+          "the_finisher",
+          "grappling_mits"
+        ],
+        "variant": "A",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "monkey_paw",
+          "crushed_hemlock"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "arbalest",
+        "skills": [
+          "sniper_shot",
+          "sniper_mark",
+          "battlefield_bandage",
+          "flare"
+        ],
+        "trinkets": [
+          "stabilizing_tiller",
+          "piercing_quarrel"
+        ],
+        "variant": "C",
+        "name": ""
+      },
+      {
+        "hero_id": "musketeer",
+        "skills": [
+          "aimed_shot",
+          "call_the_shot",
+          "patch_up",
+          "skeet_shot"
+        ],
+        "trinkets": [
+          "iron_sights",
+          "medic_fullplate"
+        ],
+        "variant": "D",
+        "name": ""
+      }
+    ]
+  }
+}

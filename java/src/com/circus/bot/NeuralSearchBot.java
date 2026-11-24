@@ -8,14 +8,15 @@ import java.util.*;
 public class NeuralSearchBot extends NeuralValueBot {
     private final long budget;
     private final int horizon;
-    private final boolean extended, controlVariate;
+    private final boolean extended, controlVariate, useAlphaBeta;
     protected final ArenaEngine.SearchScratch scratch = new ArenaEngine.SearchScratch();
 
     public NeuralSearchBot(BotContext ctx) {
         super(ctx);
-        budget = (long)(Math.clamp(ctx.effectiveTimeBudget(.8), .005, .8) * 1e9);
+        budget = (long)(Math.clamp(ctx.effectiveTimeBudget(.8), .005, 10.0) * 1e9);
         controlVariate = ctx.optionInt("control_variate", budget >= 300_000_000L ? 1 : 0) != 0;
         extended = ctx.optionInt("extended", 1) != 0;
+        useAlphaBeta = ctx.optionInt("use_alphabeta", 1) != 0;
         horizon = Math.clamp(ctx.optionInt("rollout_plies", 5), 1, 16);
     }
 
@@ -78,6 +79,9 @@ public class NeuralSearchBot extends NeuralValueBot {
     }
 
     @Override public Action chooseAction(Observation obs, ArenaEngine engine) {
+        if (useAlphaBeta) {
+            return super.chooseAction(obs, engine);
+        }
         long start = System.nanoTime();
         var legal = obs.legalActions;
         if (legal.size() == 1 || engine == null) return legal.getFirst();

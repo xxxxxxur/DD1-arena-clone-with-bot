@@ -2,7 +2,7 @@
   "id": "iron_hound",
   "name": "铁血猎犬 AI",
   "name_en": "Iron Blood Hound (Fla/Cru/MAA/HM)",
-  "name_zh": "铁血猎犬（苦修/十字军/老兵/训犬）",
+  "name_zh": "铁血猎犬（苦十兵狗）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "iron_hound",

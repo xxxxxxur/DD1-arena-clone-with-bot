@@ -1,11 +1,11 @@
 {
-  "id": "stress_circus",
-  "name": "压力折磨队 AI",
-  "name_en": "Ringmaster's Nightmare (Stress)",
-  "name_zh": "压力折磨队（马戏团噩梦）",
+  "id": "classic_bleed",
+  "name": "经典流血 AI",
+  "name_en": "Classic Bleed (HM/Fla/Jes/Ves)",
+  "name_zh": "经典流血（狗苦丑修）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
-    "profile": "stress",
+    "profile": "balanced",
     "time_budget": 0.25,
     "max_depth": 14,
     "root_width": 10,
@@ -13,10 +13,10 @@
     "detailed_tt_hash": true,
     "formation_weight": 1.0,
     "kill_weight": 1.0,
-    "survival_weight": 1.05,
+    "survival_weight": 1.0,
     "damage_weight": 1.0,
-    "stun_weight": 1.1,
-    "stress_weight": 1.55,
+    "stun_weight": 1.0,
+    "stress_weight": 1.0,
     "disruption_weight": 1.0,
     "defense_weight": 1.0,
     "strategic_eval": false,
@@ -28,64 +28,64 @@
     "control_bonus": 0.0
   },
   "team": {
-    "name": "Stress Circus",
+    "name": "Classic Bleed",
     "heroes": [
       {
-        "hero_id": "man_at_arms",
+        "hero_id": "houndmaster",
         "skills": [
-          "bellow",
-          "rampart",
-          "defender",
-          "bolster"
+          "hounds_rush",
+          "hounds_harry",
+          "guard_dog",
+          "lick_wounds"
         ],
         "trinkets": [
-          "protector_kite",
-          "carnival_masque"
-        ],
-        "variant": "B",
-        "name": ""
-      },
-      {
-        "hero_id": "crusader",
-        "skills": [
-          "zealous_accusation",
-          "stunning_blow",
-          "inspiring_cry",
-          "smite"
-        ],
-        "trinkets": [
-          "glorious_standard",
-          "eerie_eye"
+          "attack_whistle",
+          "monkey_paw"
         ],
         "variant": "A",
         "name": ""
       },
       {
-        "hero_id": "jester",
+        "hero_id": "flagellant",
         "skills": [
-          "solo",
-          "harvest",
-          "inspiring_tune",
-          "heroic_end"
+          "punish",
+          "exsanguinate",
+          "reclaim",
+          "redeem"
         ],
         "trinkets": [
-          "harlequin_masque",
-          "sanity_bane"
+          "crimson_hook",
+          "exotic_snuff"
+        ],
+        "variant": "B",
+        "name": ""
+      },
+      {
+        "hero_id": "jester",
+        "skills": [
+          "dirk_stab",
+          "harvest",
+          "heroic_end",
+          "battle_ballad"
+        ],
+        "trinkets": [
+          "blood_red_coin",
+          "monkey_paw"
         ],
         "variant": "C",
         "name": ""
       },
       {
-        "hero_id": "occultist",
+        "hero_id": "vestal",
         "skills": [
-          "abyssal_artillery",
-          "weakening_curse",
-          "wyrd_reconstruction",
-          "daemons_pull"
+          "judgement",
+          "dazzling_light",
+          "divine_grace",
+          "gods_comfort"
         ],
         "trinkets": [
-          "calling_saltes",
-          "hand_of_glory"
+          "brass_knuckles",
+          "silver_syringe"
         ],
         "variant": "D",
         "name": ""

@@ -2,7 +2,7 @@
   "id": "iron_wall",
   "name": "铁桶 AI",
   "name_en": "Iron Wall Fortress (Fla/Cru/MAA/GR)",
-  "name_zh": "铁桶（苦修/十字军/老兵/盗墓）",
+  "name_zh": "铁桶（苦十兵盗）",
   "bot_class": "com.circus.bot.CircusSearchBot",
   "bot_options": {
     "profile": "iron_wall",
