@@ -11,6 +11,8 @@ public final class DeepSetsBot extends CircusSearchBot {
     static final Path FILE = ArenaValue.FILE.resolveSibling("neural-deepsets-v1.bin");
     private final String searchMode = System.getProperty("circus.deepsets.searchMode", "rescue_wide");
     private final ArenaEngine.SearchScratch rootScratch = new ArenaEngine.SearchScratch();
+    private final com.circus.engine.EffectiveStats rootScratchA = new com.circus.engine.EffectiveStats();
+    private final com.circus.engine.EffectiveStats rootScratchB = new com.circus.engine.EffectiveStats();
     private final int h1, h2;
     private final float[][] encoder, head;
     private final float[] encoderBias, headBias, output;
@@ -112,29 +114,69 @@ public final class DeepSetsBot extends CircusSearchBot {
         return result;
     }
 
+    private double evaluateRoot1Ply(ArenaEngine engine, int myTeam, Action a, long baseSeed) {
+        if ("SKILL".equals(a.kind) && a.targetUids.size() == 1) {
+            var actor = engine.findUnit(a.actorUid);
+            var rawT = engine.findUnit(a.targetUids.get(0));
+            if (actor != null && rawT != null && rawT.alive && !rawT.isCorpse) {
+                var sdef = actor.heroDef.getSkill(a.skillId);
+                if (sdef != null && "enemy".equals(sdef.targetTeam) && !sdef.isAoe && !sdef.randomTarget && sdef.dmgMod > -1.0) {
+                    var t = rawT;
+                    if (!sdef.ignoresGuard && rawT.guardedByUid != null) {
+                        var g = engine.findUnit(rawT.guardedByUid);
+                        if (g != null && g.alive && !g.isCorpse) t = g;
+                    }
+                    if (!t.isCorpse && t.aegisBlocks == 0 && t.atDeathsDoor && t.hp <= 0) {
+                        var astats = engine.computeEffectiveStats(actor, t, sdef.isRanged ? "ranged" : "melee", rootScratchA);
+                        var tstats = engine.computeEffectiveStats(t, null, "", rootScratchB);
+                        double pHit = ArenaEngine.computeHitChance(sdef.acc + astats.values[com.circus.engine.StatKey.ACC],
+                                tstats.values[com.circus.engine.StatKey.DODGE]) / 100.0;
+                        double dbBonus = sdef.deathblowBonus + astats.values[com.circus.engine.StatKey.DEATHBLOW_CHANCE];
+                        if (t.markedRounds > 0 && ("aimed_shot".equals(sdef.id) || "sniper_shot".equals(sdef.id))) dbBonus += 30.0;
+                        if (t.isAfflicted && "bloodlet".equals(sdef.id)) dbBonus += 40.0;
+                        double pDb = ArenaEngine.clamp(100.0 - tstats.values[com.circus.engine.StatKey.DEATHBLOW_RES] + dbBonus, 5.0, 100.0) / 100.0;
+                        double pKill = pHit * pDb;
+                        ArenaEngine simK = engine.cloneForSearch(rootScratch);
+                        simK.rng.reseed(baseSeed + (a.hashCode() & 0x7FFFFFFFL));
+                        simK.searchOutcomeMode = 1;
+                        simK.step(a);
+                        double vKill = evaluateState(simK, myTeam);
+                        ArenaEngine simS = engine.cloneForSearch(rootScratch);
+                        simS.rng.reseed(baseSeed + (a.hashCode() & 0x7FFFFFFFL) + 7919L);
+                        simS.searchOutcomeMode = 2;
+                        simS.step(a);
+                        double vSurv = evaluateState(simS, myTeam);
+                        return pKill * vKill + (1.0 - pKill) * vSurv;
+                    }
+                }
+            }
+        }
+        ArenaEngine sim = engine.cloneForSearch(rootScratch);
+        sim.rng.reseed(baseSeed + (a.hashCode() & 0x7FFFFFFFL));
+        sim.searchOutcomeMode = 4; // expected hit for deterministic 1-ply ranking
+        sim.step(a);
+        return evaluateState(sim, myTeam);
+    }
+
     @Override
     protected List<ScoredAction> selectRootCandidates(ArenaEngine engine, int myTeam, List<Action> legal) {
         if (!searchMode.startsWith("rescue") || legal.size() <= 1) {
             return super.selectRootCandidates(engine, myTeam, legal);
         }
-        // Score every non-surrender legal move with 1-ply neural evaluation (~0.1ms total)
+        // Score every non-surrender/non-pass legal move with 1-ply neural evaluation (exact DD expectation!)
         ArrayList<ScoredAction> neural = new ArrayList<>(legal.size());
         long baseSeed = (engine.state.turnCount + 1L) * 10007L;
         for (int i = 0, n = legal.size(); i < n; i++) {
             Action a = legal.get(i);
-            if ("SURRENDER".equals(a.kind)) continue;
-            ArenaEngine sim = engine.cloneForSearch(rootScratch);
-            sim.rng.reseed(baseSeed + (a.hashCode() & 0x7FFFFFFFL));
-            sim.searchOutcomeMode = 4; // expected hit for deterministic 1-ply ranking
-            sim.step(a);
-            double v = evaluateState(sim, myTeam);
+            if ("SURRENDER".equals(a.kind) || "PASS".equals(a.kind)) continue;
+            double v = evaluateRoot1Ply(engine, myTeam, a, baseSeed);
             neural.add(new ScoredAction(v, a));
         }
         if (neural.isEmpty()) return super.selectRootCandidates(engine, myTeam, legal);
         neural.sort((a, b) -> Double.compare(b.score(), a.score()));
 
-        // Union of top-8 neural moves + top-6 heuristic moves (capped at 12), preserving neural order
-        // When keeping heuristic prior ("rescue_prior"), score every legal move with orderedCandidates so priorMap stays calibrated.
+        // Union of top-8 neural moves (with exact 1-ply DD expectation) + top-6 heuristic moves (capped at 12),
+        // keeping neural order first so iterative deepening & PVS prioritize the neural net's top moves.
         boolean keepPrior = "rescue_prior".equals(searchMode);
         List<ScoredAction> heur = orderedCandidates(engine, myTeam, keepPrior ? legal.size() : 6, null, 0, legal);
         HashMap<Action, Double> heurScores = keepPrior ? new HashMap<>(heur.size() * 2) : null;
